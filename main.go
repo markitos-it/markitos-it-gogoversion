@@ -91,7 +91,7 @@ func isInteractiveTerminal() bool {
 
 func confirmDefaultRun(cfg Config) bool {
 	fmt.Println("╔══════════════════════════════════════════════════════╗")
-	fmt.Println("║                  gogoversion · ggv                  ║")
+	fmt.Println("║                  gogoversion · ggv                   ║")
 	fmt.Println("╠══════════════════════════════════════════════════════╣")
 	fmt.Println("║ Se ejecutará una release automática en este repo:    ║")
 	fmt.Println("║  • leer commits desde el último tag                  ║")
