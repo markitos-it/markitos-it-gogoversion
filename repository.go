@@ -12,40 +12,58 @@ package main
 import (
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
-	"github.com/Masterminds/semver/v3"
 )
+
+type tagInfo struct {
+	Name    string
+	Version *semver.Version
+}
 
 func openRepository(path string) (*git.Repository, error) {
 	return git.PlainOpen(path)
 }
 
-func latestTag(repo *git.Repository) (string, error) {
+func resolveLatestTag(repo *git.Repository) (tagInfo, error) {
 	tags, err := repo.Tags()
 	if err != nil {
-		return "0.0.0", nil
+		return tagInfo{}, nil
 	}
 
-	var latest *semver.Version
+	var best tagInfo
 	tags.ForEach(func(ref *plumbing.Reference) error {
 		raw := strings.TrimPrefix(ref.Name().Short(), "v")
 		v, err := semver.NewVersion(raw)
 		if err != nil {
 			return nil
 		}
-		if latest == nil || v.GreaterThan(latest) {
-			latest = v
+		if best.Version == nil || v.GreaterThan(best.Version) {
+			best = tagInfo{Name: ref.Name().Short(), Version: v}
 		}
 		return nil
 	})
 
-	if latest == nil {
+	return best, nil
+}
+
+func latestTag(repo *git.Repository) (string, error) {
+	info, err := resolveLatestTag(repo)
+	if err != nil || info.Version == nil {
 		return "0.0.0", nil
 	}
-	return latest.Original(), nil
+	return info.Version.Original(), nil
+}
+
+func latestTagName(repo *git.Repository) (string, error) {
+	info, err := resolveLatestTag(repo)
+	if err != nil {
+		return "", err
+	}
+	return info.Name, nil
 }
 
 func commitsSinceTag(repo *git.Repository, tag string) ([]*object.Commit, error) {
@@ -98,33 +116,6 @@ func createTag(repo *git.Repository, version string) error {
 	}
 	_, err = repo.CreateTag(version, head.Hash(), nil)
 	return err
-}
-
-func latestTagName(repo *git.Repository) (string, error) {
-	tags, err := repo.Tags()
-	if err != nil {
-		return "", nil
-	}
-
-	var latest *semver.Version
-	name := ""
-	err = tags.ForEach(func(ref *plumbing.Reference) error {
-		raw := strings.TrimPrefix(ref.Name().Short(), "v")
-		v, err := semver.NewVersion(raw)
-		if err != nil {
-			return nil
-		}
-		if latest == nil || v.GreaterThan(latest) {
-			latest = v
-			name = ref.Name().Short()
-		}
-		return nil
-	})
-	if err != nil {
-		return "", err
-	}
-
-	return name, nil
 }
 
 func deleteTag(repo *git.Repository, tagName string) error {

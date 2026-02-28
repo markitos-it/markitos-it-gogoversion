@@ -11,6 +11,7 @@ package main
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -55,21 +56,11 @@ func bumpVersion(v *semver.Version, commits []Commit) (string, string) {
 }
 
 func anyBreaking(commits []Commit) bool {
-	for _, c := range commits {
-		if c.Breaking {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(commits, func(c Commit) bool { return c.Breaking })
 }
 
 func anyOfType(commits []Commit, t string) bool {
-	for _, c := range commits {
-		if c.Type == t {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(commits, func(c Commit) bool { return c.Type == t })
 }
 
 func printSummary(result ReleaseResult) {

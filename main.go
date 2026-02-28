@@ -37,7 +37,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	if len(os.Args) == 2 {
+	if !cfg.DryRun && isInteractiveTerminal() {
 		if !confirmDefaultRun(cfg) {
 			fmt.Println("ℹ  Operación cancelada.")
 			os.Exit(0)
@@ -79,6 +79,14 @@ func main() {
 	}
 
 	fmt.Printf("\n✅ Release %s lista\n", result.Next)
+}
+
+func isInteractiveTerminal() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }
 
 func confirmDefaultRun(cfg Config) bool {
