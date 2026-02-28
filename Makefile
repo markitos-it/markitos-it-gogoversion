@@ -2,7 +2,18 @@ BINARY  := gogoversion
 LINK    := ggv
 INSTALL := $(shell go env GOPATH)/bin
 
-.PHONY: build install uninstall clean run tidy
+.DEFAULT_GOAL := help
+
+.PHONY: help build install uninstall clean run tidy
+
+help:
+	@echo "Available targets:"
+	@echo "  build      Build binary"
+	@echo "  tidy       Tidy Go modules"
+	@echo "  install    Install binary and symlink"
+	@echo "  uninstall  Remove installed binary and symlink"
+	@echo "  clean      Remove local binary"
+	@echo "  run        Run with --dry-run"
 
 build:
 	go build -o $(BINARY) .
