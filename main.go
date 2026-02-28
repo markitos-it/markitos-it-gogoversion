@@ -10,12 +10,39 @@
 package main
 
 import (
+	"bufio"
+	"flag"
 	"fmt"
 	"os"
+	"strings"
 )
+
+var version = "dev"
 
 func main() {
 	cfg := newConfig()
+
+	if cfg.ShowHelp {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	if cfg.ShowVersion {
+		fmt.Println(version)
+		os.Exit(0)
+	}
+
+	if cfg.Undo {
+		exitOnError(undoLastRelease(cfg.RepoPath), "deshaciendo último release")
+		os.Exit(0)
+	}
+
+	if len(os.Args) == 2 {
+		if !confirmDefaultRun(cfg) {
+			fmt.Println("ℹ  Operación cancelada.")
+			os.Exit(0)
+		}
+	}
 
 	repo, err := openRepository(cfg.RepoPath)
 	exitOnError(err, "abriendo repositorio")
@@ -42,7 +69,7 @@ func main() {
 	}
 
 	if !cfg.NoChangelog {
-		exitOnError(writeChangelog(result), "escribiendo CHANGELOG")
+		exitOnError(writeChangelog(cfg.RepoPath, result), "escribiendo CHANGELOG")
 		fmt.Println("✔  CHANGELOG.md actualizado")
 	}
 
@@ -52,6 +79,32 @@ func main() {
 	}
 
 	fmt.Printf("\n✅ Release %s lista\n", result.Next)
+}
+
+func confirmDefaultRun(cfg Config) bool {
+	fmt.Println("╔══════════════════════════════════════════════════════╗")
+	fmt.Println("║                  gogoversion · ggv                  ║")
+	fmt.Println("╠══════════════════════════════════════════════════════╣")
+	fmt.Println("║ Se ejecutará una release automática en este repo:    ║")
+	fmt.Println("║  • leer commits desde el último tag                  ║")
+	fmt.Println("║  • calcular la próxima versión (SemVer)              ║")
+	if !cfg.NoChangelog {
+		fmt.Println("║  • actualizar CHANGELOG.md                           ║")
+	}
+	if !cfg.NoTag {
+		fmt.Println("║  • crear el nuevo tag git                            ║")
+	}
+	fmt.Println("╚══════════════════════════════════════════════════════╝")
+
+	fmt.Print("¿Continuar? [y/N]: ")
+	reader := bufio.NewReader(os.Stdin)
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return false
+	}
+
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "y" || answer == "yes" || answer == "s" || answer == "si"
 }
 
 func exitOnError(err error, context string) {

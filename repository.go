@@ -99,3 +99,34 @@ func createTag(repo *git.Repository, version string) error {
 	_, err = repo.CreateTag(version, head.Hash(), nil)
 	return err
 }
+
+func latestTagName(repo *git.Repository) (string, error) {
+	tags, err := repo.Tags()
+	if err != nil {
+		return "", nil
+	}
+
+	var latest *semver.Version
+	name := ""
+	err = tags.ForEach(func(ref *plumbing.Reference) error {
+		raw := strings.TrimPrefix(ref.Name().Short(), "v")
+		v, err := semver.NewVersion(raw)
+		if err != nil {
+			return nil
+		}
+		if latest == nil || v.GreaterThan(latest) {
+			latest = v
+			name = ref.Name().Short()
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return name, nil
+}
+
+func deleteTag(repo *git.Repository, tagName string) error {
+	return repo.Storer.RemoveReference(plumbing.NewTagReferenceName(tagName))
+}

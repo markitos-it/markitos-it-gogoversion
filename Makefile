@@ -1,35 +1,31 @@
 BINARY  := gogoversion
 LINK    := ggv
 INSTALL := $(shell go env GOPATH)/bin
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .DEFAULT_GOAL := help
 
 .PHONY: help build install uninstall clean run tidy
 
-help:
+help: ## Show available targets
 	@echo "Available targets:"
-	@echo "  build      Build binary"
-	@echo "  tidy       Tidy Go modules"
-	@echo "  install    Install binary and symlink"
-	@echo "  uninstall  Remove installed binary and symlink"
-	@echo "  clean      Remove local binary"
-	@echo "  run        Run with --dry-run"
+	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z0-9_-]+:.*## / && $$1 != "help" {printf "%s\t%s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort | awk -F '\t' '{printf "  %-10s %s\n", $$1, $$2}'
 
-build:
-	go build -o $(BINARY) .
+build: ## Build binary
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) .
 
-tidy:
+tidy: ## Tidy Go modules
 	go mod tidy
 
-install: build
+install: build ## Install binary and symlink
 	cp $(BINARY) $(INSTALL)/$(BINARY)
 	ln -sf $(INSTALL)/$(BINARY) $(INSTALL)/$(LINK)
 
-uninstall:
+uninstall: ## Remove installed binary and symlink
 	rm -f $(INSTALL)/$(BINARY) $(INSTALL)/$(LINK)
 
-clean:
+clean: ## Remove local binary
 	rm -f $(BINARY)
 
-run:
-	go run . --dry-run
+run: ## Run with --dry-run
+	go run . --dry-run .

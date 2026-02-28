@@ -43,12 +43,17 @@ make install        # installs gogoversion + ggv symlink
 ### Usage
 
 ```bash
-ggv                  # full release: bump + changelog + tag
-ggv --dry-run        # preview only, no writes
-ggv --no-tag         # changelog only
-ggv --no-changelog   # tag only
-ggv --path /my/repo  # different repo path
+ggv .                            # full release on current repo
+ggv --dry-run .                  # preview only, no writes
+ggv --no-tag .                   # changelog only
+ggv --no-changelog .             # tag only
+ggv --undo .                     # undo last release (tag + changelog entry)
+ggv --dry-run /my/repo           # different repo path
+ggv -h | ggv --help  # show help
+ggv --version        # show binary version
 ```
+
+`repo_path` is required, must be the last argument, and all options must go before it.
 
 ### Conventional Commits — quick reference
 
@@ -100,12 +105,17 @@ make install        # instala gogoversion + symlink ggv
 ### Uso
 
 ```bash
-ggv                  # release completa: bump + changelog + tag
-ggv --dry-run        # previsualiza sin escribir nada
-ggv --no-tag         # solo escribe el changelog
-ggv --no-changelog   # solo crea el tag
-ggv --path /mi/repo  # repositorio en otra ruta
+ggv .                            # release completa en repo actual
+ggv --dry-run .                  # previsualiza sin escribir nada
+ggv --no-tag .                   # solo escribe el changelog
+ggv --no-changelog .             # solo crea el tag
+ggv --undo .                     # deshace el último release (tag + changelog)
+ggv --dry-run /mi/repo           # repositorio en otra ruta
+ggv -h | ggv --help  # muestra ayuda
+ggv --version        # muestra la versión del binario
 ```
+
+`repo_path` es obligatorio, debe ir siempre al final y todas las opciones van antes.
 
 ### Conventional Commits — referencia rápida
 

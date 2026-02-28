@@ -12,6 +12,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -30,17 +31,54 @@ var groupLabels = map[string]string{
 	"other":    "📦 Other",
 }
 
-func writeChangelog(result ReleaseResult) error {
-	existing := readExistingChangelog()
-	return os.WriteFile(changelogFile, []byte(buildEntry(result)+existing), 0644)
+func writeChangelog(repoPath string, result ReleaseResult) error {
+	existing := readExistingChangelog(repoPath)
+	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(result)+existing), 0644)
 }
 
-func readExistingChangelog() string {
-	data, err := os.ReadFile(changelogFile)
+func readExistingChangelog(repoPath string) string {
+	data, err := os.ReadFile(changelogPath(repoPath))
 	if err != nil {
 		return ""
 	}
 	return string(data)
+}
+
+func changelogPath(repoPath string) string {
+	return filepath.Join(repoPath, changelogFile)
+}
+
+func removeChangelogEntry(repoPath, version string) (bool, error) {
+	path := changelogPath(repoPath)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	content := string(data)
+	header := "## " + version + " ("
+	start := strings.Index(content, header)
+	if start == -1 {
+		return false, nil
+	}
+
+	rest := content[start:]
+	nextRel := strings.Index(rest[len(header):], "\n## ")
+	if nextRel == -1 {
+		updated := strings.TrimSpace(content[:start])
+		if updated != "" {
+			updated += "\n"
+		}
+		return true, os.WriteFile(path, []byte(updated), 0644)
+	}
+
+	nextStart := start + len(header) + nextRel + 1
+	updated := content[:start] + content[nextStart:]
+	updated = strings.TrimLeft(updated, "\n")
+	return true, os.WriteFile(path, []byte(updated), 0644)
 }
 
 func buildEntry(result ReleaseResult) string {
