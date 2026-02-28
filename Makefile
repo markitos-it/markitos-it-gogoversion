@@ -29,3 +29,13 @@ clean: ## Remove local binary
 
 run: ## Run with --dry-run
 	go run . --dry-run .
+
+test: ## Run tests
+	go test ./...
+
+test-v: ## Run tests verbose
+	go test ./... -v
+
+cover: ## Run tests with coverage
+	go test ./... -coverprofile=coverage.out
+	go tool cover -html=coverage.out
