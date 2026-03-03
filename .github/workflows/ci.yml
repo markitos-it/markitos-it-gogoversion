@@ -10,19 +10,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       -
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       -
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
       -
-        name: Run tests without coverage terminal output
+        name: Run tests
         run: make test-v
       -
-        name: Run tests with coverage report output
-        run: make cover
+        name: Run tests with coverage profile
+        run: go test ./... -coverprofile=coverage.out
       -
-        uses: k1LoW/octocov-action@v1
+        name: Generate coverage summary
+        run: |
+          go tool cover -func=coverage.out | tee coverage.txt
+          {
+            echo "## Coverage Report"
+            echo
+            echo '```text'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      -
+        name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          check-existence: false
+          name: coverage-report
+          path: |
+            coverage.out
+            coverage.txt
