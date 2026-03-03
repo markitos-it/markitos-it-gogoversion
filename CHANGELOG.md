@@ -1,3 +1,9 @@
+## v0.2.2 (2026-03-03)
+
+### 🐛 Bug Fixes
+
+- (release) release v0.2.1: update internal/app/undo.go and internal/app/undo_test.go ([`5fc2b7b`])
+
 ## v0.2.1 (2026-03-03)
 
 ### 🔧 Chores

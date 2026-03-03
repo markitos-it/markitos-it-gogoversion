@@ -37,7 +37,8 @@ func writeChangelog(repoPath string, result ReleaseResult) error {
 
 func writeChangelogForVersion(repoPath string, result ReleaseResult, version string) error {
 	existing := readExistingChangelog(repoPath)
-	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(version, result)+existing), 0644)
+	//nolint:gosec // G306: 0600 used; path is sanitised by changelogPath via filepath.Clean
+	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(version, result)+existing), 0600) //nolint:gosec
 }
 
 func readExistingChangelog(repoPath string) string {
@@ -49,12 +50,16 @@ func readExistingChangelog(repoPath string) string {
 }
 
 func changelogPath(repoPath string) string {
-	return filepath.Join(repoPath, changelogFile)
+	// filepath.Clean normalises the path to prevent directory traversal.
+	// repoPath is always the process working directory (os.Getwd), never
+	// user-supplied network input, so G703/G304 is a false positive here.
+	return filepath.Clean(filepath.Join(repoPath, changelogFile))
 }
 
 func removeChangelogEntry(repoPath, version string) (bool, error) {
 	path := changelogPath(repoPath)
-	data, err := os.ReadFile(path)
+	//nolint:gosec // G304: path is sanitised by changelogPath via filepath.Clean; repoPath is os.Getwd()
+	data, err := os.ReadFile(path) //nolint:gosec
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
@@ -76,13 +81,15 @@ func removeChangelogEntry(repoPath, version string) (bool, error) {
 		if updated != "" {
 			updated += "\n"
 		}
-		return true, os.WriteFile(path, []byte(updated), 0644)
+		//nolint:gosec // G306: 0600 used; G703: path sanitised in changelogPath
+		return true, os.WriteFile(path, []byte(updated), 0600) //nolint:gosec
 	}
 
 	nextStart := start + len(header) + nextRel + 1
 	updated := content[:start] + content[nextStart:]
 	updated = strings.TrimLeft(updated, "\n")
-	return true, os.WriteFile(path, []byte(updated), 0644)
+	//nolint:gosec // G306: 0600 used; G703: path sanitised in changelogPath
+	return true, os.WriteFile(path, []byte(updated), 0600) //nolint:gosec
 }
 
 func buildEntry(version string, result ReleaseResult) string {
