@@ -32,8 +32,12 @@ var groupLabels = map[string]string{
 }
 
 func writeChangelog(repoPath string, result ReleaseResult) error {
+	return writeChangelogForVersion(repoPath, result, result.Next)
+}
+
+func writeChangelogForVersion(repoPath string, result ReleaseResult, version string) error {
 	existing := readExistingChangelog(repoPath)
-	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(result)+existing), 0644)
+	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(version, result)+existing), 0644)
 }
 
 func readExistingChangelog(repoPath string) string {
@@ -81,9 +85,9 @@ func removeChangelogEntry(repoPath, version string) (bool, error) {
 	return true, os.WriteFile(path, []byte(updated), 0644)
 }
 
-func buildEntry(result ReleaseResult) string {
+func buildEntry(version string, result ReleaseResult) string {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("## %s (%s)\n\n", result.Next, time.Now().Format("2006-01-02")))
+	sb.WriteString(fmt.Sprintf("## %s (%s)\n\n", version, time.Now().Format("2006-01-02")))
 	for _, t := range groupOrder {
 		writeGroup(&sb, t, filterByType(result.Commits, t))
 	}

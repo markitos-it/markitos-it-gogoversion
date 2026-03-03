@@ -92,6 +92,32 @@ func TestWriteChangelogBreakingEntry(t *testing.T) {
 	mustContain(t, string(data), "⚠️ BREAKING")
 }
 
+func TestWriteChangelogForVersion(t *testing.T) {
+	dir := t.TempDir()
+
+	result := ReleaseResult{
+		Next: "v1.1.0",
+		Commits: []Commit{
+			{Hash: "abc1234", Type: "fix", Subject: "fix bug"},
+		},
+	}
+
+	if err := writeChangelogForVersion(dir, result, "v1.0.0"); err != nil {
+		t.Fatalf("writeChangelogForVersion: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(dir, "CHANGELOG.md"))
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	content := string(data)
+
+	mustContain(t, content, "## v1.0.0")
+	if strings.Contains(content, "## v1.1.0") {
+		t.Fatalf("did not expect next version header in changelog: %s", content)
+	}
+}
+
 func TestRemoveChangelogEntry(t *testing.T) {
 	dir := t.TempDir()
 	content := "## v1.2.0 (2024-02-01)\n\n### ✨ Features\n\n- new thing\n\n## v1.1.0 (2024-01-01)\n\n### 🐛 Bug Fixes\n\n- old fix\n\n"

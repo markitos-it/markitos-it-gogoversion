@@ -13,8 +13,14 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
+	"time"
 )
+
+type exitCall struct {
+	code int
+}
 
 func TestSuggestedCommitMessage(t *testing.T) {
 	t.Run("breaking suggests feat bang", func(t *testing.T) {
@@ -71,6 +77,40 @@ func TestDefaultReleaseSubject(t *testing.T) {
 	if got != want {
 		t.Errorf("got %q want %q", got, want)
 	}
+}
+
+func TestDefaultReleaseSubjectWithLocalChanges(t *testing.T) {
+	t.Run("one changed file", func(t *testing.T) {
+		result := ReleaseResult{
+			Next: "v0.1.1",
+			Commits: []Commit{{
+				Type:    "chore",
+				Subject: "local working tree changes: .github/workflows/ci.yml",
+			}},
+		}
+
+		got := defaultReleaseSubject(result)
+		want := "release v0.1.1: update .github/workflows/ci.yml"
+		if got != want {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("three changed files", func(t *testing.T) {
+		result := ReleaseResult{
+			Next: "v0.1.1",
+			Commits: []Commit{{
+				Type:    "chore",
+				Subject: "local working tree changes: .github/workflows/ci.yml, .octocov.yml, cmd/app/main.go",
+			}},
+		}
+
+		got := defaultReleaseSubject(result)
+		want := "release v0.1.1: update .github/workflows/ci.yml, .octocov.yml and 1 more files"
+		if got != want {
+			t.Errorf("got %q want %q", got, want)
+		}
+	})
 }
 
 func TestSyntheticCommitsFromChangedFiles(t *testing.T) {
@@ -227,4 +267,284 @@ func TestIsValidCommitType(t *testing.T) {
 			t.Errorf("expected %q to be invalid", v)
 		}
 	}
+}
+
+func TestRunShowVersionExits(t *testing.T) {
+	resetFlags()
+	origArgs := os.Args
+	origExit := exitFunc
+	origStdout := os.Stdout
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		os.Stdout = origStdout
+	}()
+
+	os.Args = []string{"gogoversion", "--version"}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+
+	exited := false
+	exitCode := -1
+	exitFunc = func(code int) {
+		exited = true
+		exitCode = code
+		panic(exitCall{code: code})
+	}
+
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if ec, ok := r.(exitCall); !ok || ec.code != 0 {
+					t.Fatalf("unexpected panic: %#v", r)
+				}
+			}
+		}()
+		Run("v1.2.3")
+	}()
+
+	w.Close()
+	buf := make([]byte, 128)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if !exited || exitCode != 0 {
+		t.Fatalf("expected exit(0), got exited=%t code=%d", exited, exitCode)
+	}
+	if !strings.Contains(output, "v1.2.3") {
+		t.Fatalf("expected output to contain version, got %q", output)
+	}
+}
+
+func TestRunShowHelpCallsUsageAndExits(t *testing.T) {
+	resetFlags()
+	origArgs := os.Args
+	origExit := exitFunc
+	origUsage := usageFunc
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		usageFunc = origUsage
+	}()
+
+	os.Args = []string{"gogoversion", "--help"}
+
+	usageCalled := false
+	usageFunc = func() { usageCalled = true }
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		r := recover()
+		ec, ok := r.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", r)
+		}
+		if !usageCalled {
+			t.Fatal("expected usageFunc to be called")
+		}
+	}()
+
+	Run("v1.2.3")
+}
+
+func TestConfirmReleaseExecution(t *testing.T) {
+	origStdin := os.Stdin
+	defer func() { os.Stdin = origStdin }()
+
+	t.Run("yes", func(t *testing.T) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe: %v", err)
+		}
+		os.Stdin = r
+		_, _ = w.WriteString("yes\n")
+		w.Close()
+
+		ok := confirmReleaseExecution(Config{}, ReleaseResult{Next: "v1.0.0"}, "fix(release): release v1.0.0")
+		if !ok {
+			t.Fatal("expected confirmation to be true for yes")
+		}
+	})
+
+	t.Run("default no", func(t *testing.T) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe: %v", err)
+		}
+		os.Stdin = r
+		_, _ = w.WriteString("\n")
+		w.Close()
+
+		ok := confirmReleaseExecution(Config{}, ReleaseResult{Next: "v1.0.0"}, "fix(release): release v1.0.0")
+		if ok {
+			t.Fatal("expected confirmation to be false for empty input")
+		}
+	})
+}
+
+func TestCollectReleaseContext(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg := Config{RepoPath: dir, DryRun: true, NoTag: true, NoChangelog: true}
+	ctx, err := collectReleaseContext(repo, cfg, "vtest")
+	if err != nil {
+		t.Fatalf("collectReleaseContext: %v", err)
+	}
+
+	if ctx.ToolVersion != "vtest" {
+		t.Fatalf("ToolVersion: got %q want %q", ctx.ToolVersion, "vtest")
+	}
+	if ctx.RepoPath != dir {
+		t.Fatalf("RepoPath: got %q want %q", ctx.RepoPath, dir)
+	}
+	if ctx.LatestTag != "none" {
+		t.Fatalf("LatestTag: got %q want %q", ctx.LatestTag, "none")
+	}
+	if len(ctx.ChangedFiles) == 0 {
+		t.Fatal("expected changed files to be detected")
+	}
+}
+
+func TestPrintReleaseContext(t *testing.T) {
+	origStdout := os.Stdout
+	defer func() { os.Stdout = origStdout }()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+
+	printReleaseContext(releaseContext{
+		ToolVersion:  "v1",
+		RepoPath:     ".",
+		Branch:       "main",
+		LatestTag:    "v0.1.0",
+		ChangedFiles: []string{"a.go", "b.go"},
+		DryRun:       true,
+		NoTag:        false,
+		NoChangelog:  true,
+	})
+
+	w.Close()
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	for _, needle := range []string{"Release context", "tool version: v1", "changed files (2):", "• a.go", "dry-run=true"} {
+		if !strings.Contains(output, needle) {
+			t.Fatalf("expected output to contain %q; got %q", needle, output)
+		}
+	}
+}
+
+func TestStyleLineNoANSI(t *testing.T) {
+	got := styleLine("hello", ansiBold)
+	if got != "hello" {
+		t.Fatalf("got %q want %q", got, "hello")
+	}
+}
+
+func TestExitOnErrorExitsWithCodeOne(t *testing.T) {
+	origExit := exitFunc
+	defer func() { exitFunc = origExit }()
+
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		r := recover()
+		ec, ok := r.(exitCall)
+		if !ok || ec.code != 1 {
+			t.Fatalf("expected exit(1), got %#v", r)
+		}
+	}()
+
+	exitOnError(fmt.Errorf("boom"), "testing")
+}
+
+func TestRunStepUsesSleepFunc(t *testing.T) {
+	origSleep := sleepFunc
+	origStdout := os.Stdout
+	defer func() {
+		sleepFunc = origSleep
+		os.Stdout = origStdout
+	}()
+
+	called := false
+	var gotDuration time.Duration
+	sleepFunc = func(d time.Duration) {
+		called = true
+		gotDuration = d
+	}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+
+	runStep(1, 6, "git add")
+
+	w.Close()
+	buf := make([]byte, 256)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	if !called {
+		t.Fatal("expected sleepFunc to be called")
+	}
+	if gotDuration != 2*time.Second {
+		t.Fatalf("got duration %v want %v", gotDuration, 2*time.Second)
+	}
+	if !strings.Contains(output, "Step 1/6: git add") {
+		t.Fatalf("expected step output, got %q", output)
+	}
+}
+
+func TestChangelogBaseVersion(t *testing.T) {
+	t.Run("adds prefix", func(t *testing.T) {
+		if got := changelogBaseVersion("0.1.0"); got != "v0.1.0" {
+			t.Fatalf("got %q want %q", got, "v0.1.0")
+		}
+	})
+
+	t.Run("keeps prefixed", func(t *testing.T) {
+		if got := changelogBaseVersion("v2.0.0"); got != "v2.0.0" {
+			t.Fatalf("got %q want %q", got, "v2.0.0")
+		}
+	})
+
+	t.Run("empty to zero", func(t *testing.T) {
+		if got := changelogBaseVersion("  "); got != "v0.0.0" {
+			t.Fatalf("got %q want %q", got, "v0.0.0")
+		}
+	})
+}
+
+func TestResultForExecutionMode(t *testing.T) {
+	base := ReleaseResult{Previous: "v0.1.0", Next: "v0.1.1", Reason: "patch"}
+
+	t.Run("no-tag keeps current version", func(t *testing.T) {
+		got := resultForExecutionMode(base, "0.1.0", true)
+		if got.Next != "v0.1.0" {
+			t.Fatalf("got Next=%q want %q", got.Next, "v0.1.0")
+		}
+		if !strings.Contains(got.Reason, "--no-tag enabled") {
+			t.Fatalf("unexpected reason: %q", got.Reason)
+		}
+	})
+
+	t.Run("tag mode keeps computed next", func(t *testing.T) {
+		got := resultForExecutionMode(base, "0.1.0", false)
+		if got.Next != "v0.1.1" {
+			t.Fatalf("got Next=%q want %q", got.Next, "v0.1.1")
+		}
+	})
 }

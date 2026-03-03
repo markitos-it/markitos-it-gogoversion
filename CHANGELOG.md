@@ -1,13 +1,8 @@
-## v0.1.1 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/ci.yml, .octocov.yml, cmd/app/main.go, cmd/app/main_test.go ([`local`])
-
 ## v0.1.0 (2026-03-03)
 
 ### ✨ Features
 
+- (release) release v0.1.0: enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; Remove legacy code and tests for the gogoversion tool; +26 more changes ([`a534fe6`])
 - (release) release v0.1.0: release v0.1.0: release v0.1.0: release v0.1.0 · feature…; release v0.1.0: release v0.1.0 · features:12, fixes:7, o…; release v0.1.0 · features:12, fixes:7, other:6; +25 more changes ([`1f59f4f`])
 - (release) release v0.1.0: release v0.1.0: release v0.1.0 · features:12, fixes:7, o…; release v0.1.0 · features:12, fixes:7, other:6; mejora UX interactiva y push automático; +24 more changes ([`9a382b2`])
 - (release) release v0.1.0: release v0.1.0 · features:12, fixes:7, other:6; mejora UX interactiva y push automático; enhance commit message prompt with user-friendly selectio…; +23 more changes ([`e28d537`])
@@ -27,6 +22,7 @@
 
 ### 🐛 Bug Fixes
 
+- (release) release v0.1.1: local working tree changes ([`09b9f74`])
 - Remove obsolete CI workflow and coverage configuration files ([`ad506db`])
 - Ensure CI workflow triggers on push to main branch ([`cc1a369`])
 - Remove CI workflow configuration file ([`8b05491`])
@@ -34,6 +30,10 @@
 - Update coverage report format and remove obsolete test script ([`7c14974`])
 - Correct formatting in confirmation message for release automation ([`e231b42`])
 - (tests) create missing test files and update .gitignore ([`1d4d184`])
+
+### 🔧 Chores
+
+- (ci) update GitHub Actions for improved test coverage reporting and remove octocov configuration ([`6a35de7`])
 
 ### 📦 Other
 

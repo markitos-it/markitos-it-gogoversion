@@ -24,19 +24,36 @@ jobs:
       -
         name: Generate coverage summary
         run: |
-          go tool cover -func=coverage.out | tee coverage.txt
+          go tool cover -func=coverage.out | tail -n 1 | tee coverage-total.txt
+          awk 'NR > 1 {
+            split($1, a, ":")
+            file = a[1]
+            stmts = $2 + 0
+            cnt = $3 + 0
+            total[file] += stmts
+            allTotal += stmts
+            if (cnt > 0) {
+              covered[file] += stmts
+              allCovered += stmts
+            }
+          }
+          END {
+            for (f in total) {
+              pct = (total[f] > 0) ? (covered[f] / total[f]) * 100 : 0
+              printf "%7.1f%%  %s\n", pct, f
+            }
+          }' coverage.out | sort -nr | tee coverage-by-file.txt
+
+          total_pct=$(awk 'NR==1 { gsub("%", "", $3); print $3 }' coverage-total.txt)
+
           {
             echo "## Coverage Report"
             echo
+            echo "**Total:** ${total_pct}%"
+            echo
+            echo "### By file"
+            echo
             echo '```text'
-            cat coverage.txt
+            cat coverage-by-file.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      -
-        name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: |
-            coverage.out
-            coverage.txt

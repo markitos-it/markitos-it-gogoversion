@@ -22,22 +22,28 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
+var (
+	exitFunc  = os.Exit
+	usageFunc = func() { flag.Usage() }
+	sleepFunc = time.Sleep
+)
+
 func Run(version string) {
 	cfg := newConfig()
 
 	if cfg.ShowHelp {
-		flag.Usage()
-		os.Exit(0)
+		usageFunc()
+		exitFunc(0)
 	}
 
 	if cfg.ShowVersion {
 		fmt.Println(version)
-		os.Exit(0)
+		exitFunc(0)
 	}
 
 	if cfg.Undo {
 		exitOnError(undoLastRelease(cfg.RepoPath), "undoing last release")
-		os.Exit(0)
+		exitFunc(0)
 	}
 
 	repo, err := openRepository(cfg.RepoPath)
@@ -60,20 +66,21 @@ func Run(version string) {
 			fmt.Printf("ℹ  No commits since latest tag; using %d local changed files for release planning.\n\n", len(contextInfo.ChangedFiles))
 		} else {
 			fmt.Println("⊘  No commits since latest tag and no local changes.")
-			os.Exit(0)
+			exitFunc(0)
 		}
 	}
 
 	result := buildReleaseResult(currentVersion, commits)
-	printSummary(result)
+	effectiveResult := resultForExecutionMode(result, currentVersion, cfg.NoTag)
+	printSummary(effectiveResult)
 
-	commitMessage := suggestedCommitMessage(result)
+	commitMessage := suggestedCommitMessage(effectiveResult)
 	if !cfg.DryRun {
-		chosen, ok := askCommitMessage(result)
+		chosen, ok := askCommitMessage(effectiveResult)
 		if !ok {
 			if isInteractiveTerminal() {
 				fmt.Println("ℹ  Operation canceled.")
-				os.Exit(0)
+				exitFunc(0)
 			}
 			fmt.Println("ℹ  Interactive selector unavailable, using default commit message.")
 		} else {
@@ -83,13 +90,13 @@ func Run(version string) {
 
 	if cfg.DryRun {
 		fmt.Println("ℹ  --dry-run active — no changes.")
-		os.Exit(0)
+		exitFunc(0)
 	}
 
 	if isInteractiveTerminal() {
-		if !confirmReleaseExecution(cfg, result, commitMessage) {
+		if !confirmReleaseExecution(cfg, effectiveResult, commitMessage) {
 			fmt.Println("ℹ  Operation canceled.")
-			os.Exit(0)
+			exitFunc(0)
 		}
 	}
 
@@ -99,7 +106,7 @@ func Run(version string) {
 
 	runStep(1, 6, "git add")
 	if !cfg.NoChangelog {
-		exitOnError(writeChangelog(cfg.RepoPath, result), "writing CHANGELOG")
+		exitOnError(writeChangelogForVersion(cfg.RepoPath, effectiveResult, effectiveResult.Next), "writing CHANGELOG")
 		fmt.Println("✔  CHANGELOG.md updated")
 	}
 	stagedCount, err = addAllChangedFiles(repo)
@@ -153,7 +160,7 @@ func Run(version string) {
 		}
 	}
 
-	fmt.Printf("\n✅ Release %s ready\n", result.Next)
+	fmt.Printf("\n✅ Release %s ready\n", effectiveResult.Next)
 }
 
 func isInteractiveTerminal() bool {
@@ -265,12 +272,6 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 	prompt := promptui.Prompt{
 		Label:   "Message",
 		Default: defaultSubject,
-		Validate: func(input string) error {
-			if strings.TrimSpace(input) == "" {
-				return fmt.Errorf("message cannot be empty")
-			}
-			return nil
-		},
 	}
 
 	subject, err := prompt.Run()
@@ -278,6 +279,9 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 		return "", false
 	}
 	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		subject = defaultSubject
+	}
 
 	if strings.EqualFold(subject, "cancel") || strings.EqualFold(subject, "cancelar") {
 		return "", false
@@ -357,7 +361,30 @@ func normalizeCommitSubject(subject string) string {
 	}
 
 	if strings.HasPrefix(subject, "local working tree changes:") {
-		return "local working tree changes"
+		changed := strings.TrimSpace(strings.TrimPrefix(subject, "local working tree changes:"))
+		if changed == "" {
+			return "local working tree changes"
+		}
+
+		parts := strings.Split(changed, ",")
+		files := make([]string, 0, len(parts))
+		for _, part := range parts {
+			file := strings.TrimSpace(part)
+			if file != "" {
+				files = append(files, file)
+			}
+		}
+
+		switch len(files) {
+		case 0:
+			return "local working tree changes"
+		case 1:
+			return fmt.Sprintf("update %s", files[0])
+		case 2:
+			return fmt.Sprintf("update %s and %s", files[0], files[1])
+		default:
+			return fmt.Sprintf("update %s, %s and %d more files", files[0], files[1], len(files)-2)
+		}
 	}
 
 	const maxLen = 58
@@ -466,11 +493,33 @@ func isValidCommitType(commitType string) bool {
 func exitOnError(err error, context string) {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "✖  Error while %s: %v\n", context, err)
-		os.Exit(1)
+		exitFunc(1)
 	}
 }
 
 func runStep(current, total int, name string) {
 	fmt.Printf("\n▶ Step %d/%d: %s\n", current, total, name)
-	time.Sleep(2 * time.Second)
+	sleepFunc(2 * time.Second)
+}
+
+func changelogBaseVersion(currentVersion string) string {
+	v := strings.TrimSpace(currentVersion)
+	if v == "" {
+		v = "0.0.0"
+	}
+	if !strings.HasPrefix(v, "v") {
+		v = "v" + v
+	}
+	return v
+}
+
+func resultForExecutionMode(result ReleaseResult, currentVersion string, noTag bool) ReleaseResult {
+	if !noTag {
+		return result
+	}
+
+	effective := result
+	effective.Next = changelogBaseVersion(currentVersion)
+	effective.Reason = "--no-tag enabled → keep current version (no new tag)"
+	return effective
 }
