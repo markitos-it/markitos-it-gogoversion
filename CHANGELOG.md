@@ -1,3 +1,9 @@
+## v0.2.0 (2026-03-03)
+
+### ✨ Features
+
+- (release) release v0.1.0: update .github/workflows/appsec.yml, .github/workflows/ci.yml and 1 more files ([`b478868`])
+
 ## v0.1.0 (2026-03-03)
 
 ### 🔧 Chores
