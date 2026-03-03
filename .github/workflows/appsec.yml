@@ -1,0 +1,171 @@
+#:[.'.]:>- ===================================================================================
+#:[.'.]:>- Marco Antonio - markitos devsecops kulture
+#:[.'.]:>- The Way of the Artisan
+#:[.'.]:>- markitos.es.info@gmail.com
+#:[.'.]:>- 🌍 https://github.com/orgs/markitos-it/repositories
+#:[.'.]:>- 🌍 https://github.com/orgs/markitos-public/repositories
+#:[.'.]:>- 📺 https://www.youtube.com/@markitos_devsecops
+#:[.'.]:>- ===================================================================================
+
+name: appsec-pipeline
+
+#:[.'.]:>- Evento de ejecución:
+#:[.'.]:>- - push: dispara este pipeline únicamente al hacer push a cualquier rama.
+#:[.'.]:>- Opciones posibles en GitHub Actions:
+#:[.'.]:>- - pull_request: escanear en PRs.
+#:[.'.]:>- - workflow_dispatch: ejecución manual desde UI.
+#:[.'.]:>- - schedule: ejecución por cron.
+on:
+  push:
+    branches: [main]
+
+#:[.'.]:>- Permisos mínimos para seguridad:
+#:[.'.]:>- - contents: read permite leer el repositorio.
+#:[.'.]:>- Opciones comunes:
+#:[.'.]:>- - security-events: write (si subes SARIF a Code Scanning).
+#:[.'.]:>- - packages: read (si necesitas tirar imágenes privadas).
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    concurrency:
+      #:[.'.]:>- Evita ejecuciones duplicadas por rama/ref y cancela la anterior en curso.
+      #:[.'.]:>- Opciones:
+      #:[.'.]:>- - cancel-in-progress: true|false
+      #:[.'.]:>- - group: puede incluir workflow + ref para granularidad.
+      group: appsec-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      #:[.'.]:>- Checkout del código para que Gitleaks pueda inspeccionar el repo completo.
+      #:[.'.]:>- fetch-depth: 0 trae todo el historial de commits (necesario para gitleaks).
+      #:[.'.]:>- Opciones:
+      #:[.'.]:>- - fetch-depth: 1 (rápido, solo último commit).
+      #:[.'.]:>- - persist-credentials: false (recomendado para endurecer).
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      #:[.'.]:>- Escaneo de secretos con Gitleaks vía contenedor.
+      #:[.'.]:>- Sin registro ni token requerido - 100% open source.
+      #:[.'.]:>- --rm: elimina el contenedor al terminar.
+      #:[.'.]:>- -v "workspace:/repo": monta el repo para escaneo.
+      #:[.'.]:>- detect: modo de detección de leaks.
+      #:[.'.]:>- --source="/repo": ruta objetivo.
+      #:[.'.]:>- --redact: enmascara secretos en salida.
+      #:[.'.]:>- --no-banner: salida más limpia para CI.
+      #:[.'.]:>- Opciones útiles:
+      #:[.'.]:>- - --verbose: más detalle en logs.
+      #:[.'.]:>- - --exit-code 1: fuerza fallo cuando encuentra leaks.
+      #:[.'.]:>- - --config /repo/.gitleaks.toml: reglas personalizadas.
+      #:[.'.]:>- - usar imagen versionada o digest en vez de latest.
+      - name: Gitleaks Scan
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/repo" \
+            ghcr.io/gitleaks/gitleaks:latest \
+            detect --source="/repo" --redact --no-banner --verbose
+
+  sast:
+    name: SAST Analysis
+    runs-on: ubuntu-latest
+    concurrency:
+      group: sast-${{ github.ref }}
+      cancel-in-progress: true
+    #:[.'.]:>- Permisos para análisis SAST.
+    permissions:
+      contents: read
+    steps:
+      #:[.'.]:>- Checkout del código para análisis SAST.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      #:[.'.]:>- Setup de Go usando la versión declarada en go.mod.
+      #:[.'.]:>- Necesario para instalar y ejecutar herramientas Go nativas.
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      #:[.'.]:>- Análisis SAST con gosec (Go Security Checker).
+      #:[.'.]:>- Herramienta open source específica para Go, sin token ni registro.
+      #:[.'.]:>- Detecta vulnerabilidades comunes: inyección, crypto débil, path traversal,
+      #:[.'.]:>- hardcoded secrets, uso inseguro de net/http, etc.
+      #:[.'.]:>- Opciones útiles:
+      #:[.'.]:>- - -fmt sarif: salida SARIF para subir a GitHub Code Scanning.
+      #:[.'.]:>- - -severity medium: filtra por severidad mínima.
+      #:[.'.]:>- - -exclude G104: excluye regla específica (ej: errores ignorados).
+      #:[.'.]:>- - -tests: incluye ficheros de test en el análisis.
+      #:[.'.]:>- - ./...: analiza todos los paquetes del módulo.
+      #:[.'.]:>- Nota: || true evita fallo de pipeline; quitar para modo bloqueante.
+      - name: gosec Scan
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec -severity medium -confidence medium ./... || true
+
+  dependencies:
+    name: Dependency Scanning
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deps-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    steps:
+      #:[.'.]:>- Checkout del código.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      #:[.'.]:>- Setup de Go usando la versión declarada en go.mod.
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      #:[.'.]:>- Escaneo de vulnerabilidades en dependencias con govulncheck (Google).
+      #:[.'.]:>- Herramienta oficial de Google para Go, open source, sin token ni registro.
+      #:[.'.]:>- Consulta la base de datos pública https://vuln.go.dev (Go Vulnerability DB).
+      #:[.'.]:>- A diferencia de Trivy, govulncheck analiza el grafo de llamadas real:
+      #:[.'.]:>- solo reporta CVEs que tu código REALMENTE invoca, no solo presencia en go.sum.
+      #:[.'.]:>- Esto reduce drásticamente los falsos positivos en proyectos Go.
+      #:[.'.]:>- Opciones útiles:
+      #:[.'.]:>- - -json: salida JSON estructurada.
+      #:[.'.]:>- - -v: modo verbose.
+      #:[.'.]:>- - ./...: analiza todos los paquetes del módulo.
+      #:[.'.]:>- Nota: || true evita fallo de pipeline; quitar para modo bloqueante.
+      - name: govulncheck Scan
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./... || true
+
+  linting:
+    name: Bash Linting
+    runs-on: ubuntu-latest
+    concurrency:
+      group: lint-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+    steps:
+      #:[.'.]:>- Checkout del código.
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      #:[.'.]:>- Linting de scripts Bash con ShellCheck.
+      #:[.'.]:>- Detecta bugs, código inseguro y malas prácticas en bash.
+      #:[.'.]:>- find: localiza todos los archivos .sh del proyecto.
+      #:[.'.]:>- --severity=style: nivel mínimo de severidad (style < info < warning < error).
+      #:[.'.]:>- --exclude=SC1090: excluye la regla SC1090 (source path not found).
+      #:[.'.]:>- Opciones:
+      #:[.'.]:>- - --shell=bash: fuerza interpretación como bash.
+      #:[.'.]:>- - --format=gcc: salida estilo GCC para parsers de CI.
+      #:[.'.]:>- Nota: || true evita fallo si no hay .sh o hay warnings menores.
+      - name: ShellCheck Scan
+        shell: bash
+        run: |
+          sudo apt-get install -y shellcheck
+          find . -type f -name "*.sh" -not -path "*/vendor/*" -print0 \
+            | xargs -0 shellcheck --severity=style --shell=bash --exclude=SC1090 || true

@@ -1,5 +1,11 @@
 ## v0.1.0 (2026-03-03)
 
+### 🔧 Chores
+
+- local working tree changes: .github/workflows/appsec.yml, .github/workflows/ci.yml, .github/workflows/test.yml ([`local`])
+
+## v0.1.0 (2026-03-03)
+
 ### ✨ Features
 
 - (release) release v0.1.0: update GitHub Actions for improved test coverage reportin…; enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; +29 more changes ([`b1871c6`])
