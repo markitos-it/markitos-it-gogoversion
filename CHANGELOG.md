@@ -2,6 +2,12 @@
 
 ### 🔧 Chores
 
+- local working tree changes: internal/app/undo.go, internal/app/undo_test.go ([`local`])
+
+## v0.2.1 (2026-03-03)
+
+### 🔧 Chores
+
 - local working tree changes: go.mod, go.sum ([`local`])
 
 ## v0.2.0 (2026-03-03)

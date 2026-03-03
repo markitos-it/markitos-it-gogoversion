@@ -2,13 +2,18 @@ package app
 
 import "fmt"
 
+var (
+	undoLatestTagNameFn = latestTagName
+	undoDeleteTagFn     = deleteTag
+)
+
 func undoLastRelease(repoPath string) error {
 	repo, err := openRepository(repoPath)
 	if err != nil {
 		return err
 	}
 
-	tagName, err := latestTagName(repo)
+	tagName, err := undoLatestTagNameFn(repo)
 	if err != nil {
 		return err
 	}
@@ -17,7 +22,7 @@ func undoLastRelease(repoPath string) error {
 		return nil
 	}
 
-	if err := deleteTag(repo, tagName); err != nil {
+	if err := undoDeleteTagFn(repo, tagName); err != nil {
 		return err
 	}
 	fmt.Printf("✔  Tag %s removed\n", tagName)

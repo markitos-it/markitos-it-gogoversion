@@ -10,6 +10,7 @@
 package app
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -133,5 +134,52 @@ func TestUndoLastReleaseDeletesRemoteTag(t *testing.T) {
 	}
 	if _, err := remoteRepo.Reference(plumbing.NewTagReferenceName("v1.0.0"), true); err == nil {
 		t.Fatal("expected remote tag v1.0.0 to be deleted")
+	}
+}
+
+func TestUndoLastReleaseLatestTagNameError(t *testing.T) {
+	_, dir := initTestRepo(t)
+
+	boom := errors.New("latestTagName boom")
+	orig := undoLatestTagNameFn
+	undoLatestTagNameFn = func(_ *git.Repository) (string, error) {
+		return "", boom
+	}
+	t.Cleanup(func() { undoLatestTagNameFn = orig })
+
+	err := undoLastRelease(dir)
+	if err == nil {
+		t.Fatal("expected error from latestTagName")
+	}
+}
+
+func TestUndoLastReleaseDeleteTagError(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+
+	boom := errors.New("deleteTag boom")
+	orig := undoDeleteTagFn
+	undoDeleteTagFn = func(_ *git.Repository, _ string) error { return boom }
+	t.Cleanup(func() { undoDeleteTagFn = orig })
+
+	err := undoLastRelease(dir)
+	if err == nil || err.Error() != boom.Error() {
+		t.Fatalf("expected deleteTag error, got %v", err)
+	}
+}
+
+func TestUndoLastReleaseChangelogReadError(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+
+	// make CHANGELOG.md a directory so os.ReadFile returns an error
+	clPath := filepath.Join(dir, "CHANGELOG.md")
+	if err := os.Mkdir(clPath, 0755); err != nil {
+		t.Fatalf("Mkdir: %v", err)
+	}
+
+	err := undoLastRelease(dir)
+	if err == nil {
+		t.Fatal("expected error when CHANGELOG.md is a directory")
 	}
 }
