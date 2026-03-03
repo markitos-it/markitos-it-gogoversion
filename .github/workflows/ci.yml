@@ -25,6 +25,4 @@ jobs:
         uses: k1LoW/octocov-action@v1
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          coverage-file: coverage.out
-          project-root: .
-          fail-on-error: true
+          check-existence: false

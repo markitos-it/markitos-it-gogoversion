@@ -1,0 +1,14 @@
+coverage:
+  paths:
+    - coverage.out
+
+codeToTestRatio:
+  code:
+    - '**/*.go'
+    - '!**/*_test.go'
+  test:
+    - '**/*_test.go'
+
+summary:
+  if: true
+  hideFooterLink: true

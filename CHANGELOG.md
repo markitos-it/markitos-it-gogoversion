@@ -1,3 +1,9 @@
+## v0.1.1 (2026-03-03)
+
+### 🔧 Chores
+
+- local working tree changes: .github/workflows/ci.yml, .octocov.yml, cmd/app/main.go, cmd/app/main_test.go ([`local`])
+
 ## v0.1.0 (2026-03-03)
 
 ### ✨ Features
