@@ -16,6 +16,8 @@ import (
 	"os"
 	"slices"
 	"strings"
+
+	"github.com/manifoldco/promptui"
 )
 
 func Run(version string) {
@@ -155,43 +157,83 @@ func suggestedCommitMessage(result ReleaseResult) string {
 }
 
 func askCommitMessage(result ReleaseResult) (string, bool) {
-	reader := bufio.NewReader(os.Stdin)
 	defaultType := defaultReleaseCommitType(result)
 	defaultBang := anyBreaking(result.Commits)
 	defaultSubject := fmt.Sprintf("prepara release %s", result.Next)
+	type commitOption struct {
+		Value string
+		Label string
+	}
 
 	fmt.Println("\nConfigura el commit del release:")
-	fmt.Printf("Tipo [%s]: ", defaultType)
-	typeInput, err := reader.ReadString('\n')
+	choices := []commitOption{
+		{Value: "feat", Label: "feat ✨ · nueva funcionalidad (MINOR)"},
+		{Value: "feat!", Label: "feat! ⚠️ · BREAKING CHANGE (MAJOR)"},
+		{Value: "fix", Label: "fix 🩹 · corrección de bug (PATCH)"},
+		{Value: "fix!", Label: "fix! ⚠️ · fix con ruptura (MAJOR)"},
+		{Value: "perf", Label: "perf 🚀 · mejora rendimiento (PATCH)"},
+		{Value: "perf!", Label: "perf! ⚠️ · perf con ruptura (MAJOR)"},
+		{Value: "refactor", Label: "refactor 🧱 · cambio interno (PATCH)"},
+		{Value: "refactor!", Label: "refactor! ⚠️ · refactor con ruptura (MAJOR)"},
+		{Value: "docs", Label: "docs 📝 · documentación (PATCH)"},
+		{Value: "docs!", Label: "docs! ⚠️ · docs con ruptura (MAJOR)"},
+		{Value: "chore", Label: "chore 🔧 · mantenimiento (PATCH)"},
+		{Value: "chore!", Label: "chore! ⚠️ · chore con ruptura (MAJOR)"},
+	}
+
+	defaultChoice := defaultType
+	if defaultBang {
+		defaultChoice = defaultType + "!"
+	}
+
+	selector := promptui.Select{
+		Label: "Tipo de commit (↑/↓ y Enter)",
+		Items: choices,
+		Templates: &promptui.SelectTemplates{
+			Label:    "{{ .Label | cyan }}",
+			Active:   "▸ {{ .Label | green }}",
+			Inactive: "  {{ .Label }}",
+			Selected: "✔ {{ .Label | cyan }}",
+		},
+		Size: 8,
+	}
+
+	for i, item := range choices {
+		if item.Value == defaultChoice {
+			selector.CursorPos = i
+			break
+		}
+	}
+
+	idx, _, err := selector.Run()
 	if err != nil {
 		return "", false
 	}
-	selectedType := strings.TrimSpace(strings.ToLower(typeInput))
-	if selectedType == "" {
-		selectedType = defaultType
-	}
 
-	breaking := defaultBang
-	if strings.HasSuffix(selectedType, "!") {
-		breaking = true
-		selectedType = strings.TrimSuffix(selectedType, "!")
-	}
+	selected := choices[idx].Value
+	breaking := strings.HasSuffix(selected, "!")
+	selectedType := strings.TrimSuffix(selected, "!")
 
 	if !isValidCommitType(selectedType) {
-		fmt.Printf("✖  Tipo inválido: %q\n", selectedType)
-		fmt.Println("   Tipos válidos: feat, fix, perf, refactor, docs, chore (opcional !)")
 		return "", false
 	}
 
-	fmt.Printf("Mensaje [%s]: ", defaultSubject)
-	subjectInput, err := reader.ReadString('\n')
+	prompt := promptui.Prompt{
+		Label:   "Mensaje",
+		Default: defaultSubject,
+		Validate: func(input string) error {
+			if strings.TrimSpace(input) == "" {
+				return fmt.Errorf("el mensaje no puede estar vacío")
+			}
+			return nil
+		},
+	}
+
+	subject, err := prompt.Run()
 	if err != nil {
 		return "", false
 	}
-	subject := strings.TrimSpace(subjectInput)
-	if subject == "" {
-		subject = defaultSubject
-	}
+	subject = strings.TrimSpace(subject)
 
 	if strings.EqualFold(subject, "cancel") || strings.EqualFold(subject, "cancelar") {
 		return "", false

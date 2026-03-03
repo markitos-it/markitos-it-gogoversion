@@ -16,8 +16,11 @@ jobs:
         with:
           go-version-file: go.mod
       -
+        name: Run tests without coverage terminal output
+        run: make test-v
+      -
         name: Run tests with coverage report output
-        run: go test ./... -coverprofile=coverage.out
+        run: make cover
       -
         uses: k1LoW/octocov-action@v1
         with:
