@@ -62,6 +62,8 @@ ggv --version        # show binary version
 
 `repo_path` is required, must be the last argument, and all options must go before it.
 
+In interactive mode (`ggv .`), the tool asks for the release commit type and message, then runs `git add CHANGELOG.md` + `git commit` automatically before creating the tag.
+
 ### Conventional Commits — quick reference
 
 ```
@@ -130,6 +132,8 @@ ggv --version        # muestra la versión del binario
 ```
 
 `repo_path` es obligatorio, debe ir siempre al final y todas las opciones van antes.
+
+En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, y luego ejecuta `git add CHANGELOG.md` + `git commit` automáticamente antes de crear el tag.
 
 ### Conventional Commits — referencia rápida
 
