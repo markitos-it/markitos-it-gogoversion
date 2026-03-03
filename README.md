@@ -29,7 +29,14 @@ No Node. No npm. Pure Go.
 ### Install
 
 ```bash
-go install github.com/markitos-it/markitos-it-gogoversion@latest
+go install github.com/markitos-it/markitos-it-gogoversion/cmd/app@latest
+ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
+```
+
+Or from this repo:
+
+```bash
+make install-latest # go install cmd/app@latest + ggv symlink
 ```
 
 Or clone and build:
@@ -91,7 +98,14 @@ make uninstall
 ### Instalación
 
 ```bash
-go install github.com/markitos-it/markitos-it-gogoversion@latest
+go install github.com/markitos-it/markitos-it-gogoversion/cmd/app@latest
+ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
+```
+
+O desde este repo:
+
+```bash
+make install-latest # go install cmd/app@latest + symlink ggv
 ```
 
 O clona y compila:
