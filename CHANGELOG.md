@@ -1,3 +1,9 @@
+## v0.2.6 (2026-03-03)
+
+### 🔧 Chores
+
+- local working tree changes: .github/workflows/release.yaml ([`local`])
+
 ## v0.2.5 (2026-03-03)
 
 ### 🔧 Chores
