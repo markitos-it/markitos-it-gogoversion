@@ -62,7 +62,9 @@ ggv --version        # show binary version
 
 `repo_path` is required, must be the last argument, and all options must go before it.
 
-In interactive mode (`ggv .`), the tool asks for the release commit type and message, then runs `git add CHANGELOG.md` + `git commit` automatically before creating the tag.
+In interactive mode (`ggv .`), the tool asks for the release commit type and message, runs `git add CHANGELOG.md` + `git commit`, creates the tag, and then pushes the current branch and tag to `origin`.
+
+Release mode requires a clean working tree (best practice): commit/stash pending changes before running `ggv .`.
 
 ### Conventional Commits — quick reference
 
@@ -133,7 +135,9 @@ ggv --version        # muestra la versión del binario
 
 `repo_path` es obligatorio, debe ir siempre al final y todas las opciones van antes.
 
-En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, y luego ejecuta `git add CHANGELOG.md` + `git commit` automáticamente antes de crear el tag.
+En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, ejecuta `git add CHANGELOG.md` + `git commit`, crea el tag y después hace push de la rama actual y del tag a `origin`.
+
+El modo release requiere árbol de trabajo limpio (best practice): haz commit o stash de cambios pendientes antes de ejecutar `ggv .`.
 
 ### Conventional Commits — referencia rápida
 

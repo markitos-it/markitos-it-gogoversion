@@ -41,6 +41,10 @@ func Run(version string) {
 	repo, err := openRepository(cfg.RepoPath)
 	exitOnError(err, "abriendo repositorio")
 
+	if !cfg.DryRun {
+		exitOnError(ensureCleanWorktree(repo), "validando estado git")
+	}
+
 	currentVersion, err := latestTag(repo)
 	exitOnError(err, "obteniendo último tag")
 
@@ -91,6 +95,11 @@ func Run(version string) {
 		fmt.Printf("✔  Tag %s creado\n", result.Next)
 	}
 
+	if !cfg.DryRun {
+		exitOnError(pushRelease(repo, result.Next, !cfg.NoTag), "publicando cambios en remoto")
+		fmt.Println("✔  Push a origin completado")
+	}
+
 	fmt.Printf("\n✅ Release %s lista\n", result.Next)
 }
 
@@ -104,36 +113,18 @@ func isInteractiveTerminal() bool {
 
 func confirmDefaultRun(cfg Config, result ReleaseResult) bool {
 	suggestedCommit := suggestedCommitMessage(result)
-
-	fmt.Println("╔══════════════════════════════════════════════════════╗")
-	fmt.Println("║                  gogoversion · ggv                   ║")
-	fmt.Println("╠══════════════════════════════════════════════════════╣")
-	fmt.Println("║ Plan de release automático                            ║")
-	fmt.Printf("║  • nuevo tag: %-40s║\n", result.Next)
+	fmt.Println("Plan de release automático")
+	fmt.Printf("  • nuevo tag: %s\n", result.Next)
 	if !cfg.NoChangelog {
-		fmt.Println("║  • actualizar CHANGELOG.md                           ║")
-		fmt.Println("║  • commit sugerido:                                  ║")
-		fmt.Printf("║    git add CHANGELOG.md                              ║\n")
-		fmt.Printf("║    git commit -m %q\n", suggestedCommit)
+		fmt.Println("  • actualizar CHANGELOG.md")
+		fmt.Println("  • commit sugerido:")
+		fmt.Println("    git add CHANGELOG.md")
+		fmt.Printf("    git commit -m %q\n", suggestedCommit)
 	}
 	if !cfg.NoTag {
-		fmt.Println("║  • crear el nuevo tag git                            ║")
+		fmt.Println("  • crear el nuevo tag git")
 	}
-	fmt.Println("║                                                      ║")
-	fmt.Println("║ Plantillas commit (elige una):                       ║")
-	fmt.Println("║  • feat: <mensaje>                                   ║")
-	fmt.Println("║  • feat!: <mensaje>                                  ║")
-	fmt.Println("║  • fix: <mensaje>                                    ║")
-	fmt.Println("║  • fix!: <mensaje>                                   ║")
-	fmt.Println("║  • perf: <mensaje>                                   ║")
-	fmt.Println("║  • perf!: <mensaje>                                  ║")
-	fmt.Println("║  • refactor: <mensaje>                               ║")
-	fmt.Println("║  • refactor!: <mensaje>                              ║")
-	fmt.Println("║  • docs: <mensaje>                                   ║")
-	fmt.Println("║  • docs!: <mensaje>                                  ║")
-	fmt.Println("║  • chore: <mensaje>                                  ║")
-	fmt.Println("║  • chore!: <mensaje>                                 ║")
-	fmt.Println("╚══════════════════════════════════════════════════════╝")
+	fmt.Println("  • push a origin (rama actual y tags)")
 
 	fmt.Print("¿Continuar? [y/N]: ")
 	reader := bufio.NewReader(os.Stdin)

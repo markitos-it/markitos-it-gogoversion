@@ -17,6 +17,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
@@ -167,4 +168,53 @@ func resolveGitSignature(repo *git.Repository) (*object.Signature, error) {
 	}
 
 	return &object.Signature{Name: name, Email: email, When: time.Now()}, nil
+}
+
+func ensureCleanWorktree(repo *git.Repository) error {
+	wt, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	status, err := wt.Status()
+	if err != nil {
+		return err
+	}
+
+	if status.IsClean() {
+		return nil
+	}
+
+	files := make([]string, 0, len(status))
+	for file := range status {
+		files = append(files, file)
+	}
+
+	return fmt.Errorf("working tree con cambios pendientes: %s", strings.Join(files, ", "))
+}
+
+func pushRelease(repo *git.Repository, tag string, includeTag bool) error {
+	head, err := repo.Head()
+	if err != nil {
+		return err
+	}
+
+	if !head.Name().IsBranch() {
+		return fmt.Errorf("HEAD no está en una rama; no se puede hacer push automático")
+	}
+
+	branch := head.Name().Short()
+	branchSpec := gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
+	if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{branchSpec}}); err != nil && err != git.NoErrAlreadyUpToDate {
+		return err
+	}
+
+	if includeTag {
+		tagSpec := gitconfig.RefSpec(fmt.Sprintf("refs/tags/%s:refs/tags/%s", tag, tag))
+		if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{tagSpec}}); err != nil && err != git.NoErrAlreadyUpToDate {
+			return err
+		}
+	}
+
+	return nil
 }
