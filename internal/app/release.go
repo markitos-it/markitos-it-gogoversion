@@ -11,6 +11,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"slices"
 
 	"github.com/Masterminds/semver/v3"
@@ -47,11 +48,11 @@ func bumpVersion(v *semver.Version, commits []Commit) (string, string) {
 
 	switch {
 	case anyBreaking(commits):
-		return fmt.Sprintf("%d.0.0", major+1), "BREAKING CHANGE detectado → bump MAJOR"
+		return fmt.Sprintf("%d.0.0", major+1), "breaking change detected → MAJOR bump"
 	case anyOfType(commits, "feat"):
-		return fmt.Sprintf("%d.%d.0", major, minor+1), "feat detectado → bump MINOR"
+		return fmt.Sprintf("%d.%d.0", major, minor+1), "feature detected → MINOR bump"
 	default:
-		return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), "fix/chore detectado → bump PATCH"
+		return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), "fix/chore detected → PATCH bump"
 	}
 }
 
@@ -64,14 +65,39 @@ func anyOfType(commits []Commit, t string) bool {
 }
 
 func printSummary(result ReleaseResult) {
-	fmt.Printf("▸  Versión anterior: %s\n", result.Previous)
-	fmt.Printf("▸  Razón del bump:   %s\n", result.Reason)
-	fmt.Printf("▸  Versión nueva:    %s\n\n", result.Next)
-	fmt.Println("Commits incluidos:")
+	paint := colorizer(os.Stdout)
+	fmt.Printf("▸  Previous version: %s\n", result.Previous)
+	fmt.Printf("▸  Bump reason:      %s\n", result.Reason)
+	fmt.Printf("▸  New version:      %s\n\n", result.Next)
+	fmt.Println("Included commits:")
 	for _, c := range result.Commits {
-		fmt.Printf("  [%s] %s\n", c.Hash, formatCommitLine(c))
+		fmt.Printf("  [%s] %s\n", c.Hash, formatCommitLineColored(c, paint))
 	}
 	fmt.Println()
+}
+
+func formatCommitLineColored(c Commit, paint func(string, string) string) string {
+	line := formatCommitLine(c)
+	if c.Breaking {
+		return paint(line, ansiRed)
+	}
+
+	switch c.Type {
+	case "feat":
+		return paint(line, ansiGreen)
+	case "fix":
+		return paint(line, ansiYellow)
+	case "perf":
+		return paint(line, ansiBlue)
+	case "refactor":
+		return paint(line, ansiMagenta)
+	case "docs":
+		return paint(line, ansiBoldCyan)
+	case "chore":
+		return paint(line, ansiBold)
+	default:
+		return line
+	}
 }
 
 func formatCommitLine(c Commit) string {

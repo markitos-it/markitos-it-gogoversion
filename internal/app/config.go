@@ -18,13 +18,13 @@ import (
 )
 
 type Config struct {
-	RepoPath    string
-	DryRun      bool
-	NoTag       bool
-	NoChangelog bool
-	Undo        bool
-	ShowHelp    bool
-	ShowVersion bool
+	RepoPath     string
+	DryRun       bool
+	NoTag        bool
+	NoChangelog  bool
+	Undo         bool
+	ShowHelp     bool
+	ShowVersion  bool
 }
 
 func newConfig() Config {
@@ -33,29 +33,34 @@ func newConfig() Config {
 		out := flag.CommandLine.Output()
 		paint := colorizer(out)
 		name := filepath.Base(os.Args[0])
-		fmt.Fprintf(out, "%s: %s [flags] <repo_path>\n\n", paint("Uso", ansiBoldCyan), paint(name, ansiBold))
-		fmt.Fprintln(out, paint("Notas", ansiBoldCyan)+":")
-		fmt.Fprintln(out, "  - repo_path es obligatorio y va siempre al final")
-		fmt.Fprintln(out, "  - usa . para el repositorio actual")
+		fmt.Fprintf(out, "%s: %s [flags] <repo_path>\n\n", paint("Usage", ansiBoldCyan), paint(name, ansiBold))
+		fmt.Fprintln(out, paint("Notes", ansiBoldCyan)+":")
+		fmt.Fprintln(out, "  - repo_path is required and must be the last argument")
+		fmt.Fprintln(out, "  - use . for the current repository")
 		fmt.Fprintln(out, "")
-		fmt.Fprintln(out, paint("Ejemplos", ansiBoldCyan)+":")
+		fmt.Fprintln(out, paint("Examples", ansiBoldCyan)+":")
 		fmt.Fprintf(out, "  %s .\n", paint(name, ansiYellow))
 		fmt.Fprintf(out, "  %s --dry-run .\n", paint(name, ansiYellow))
-		fmt.Fprintf(out, "  %s --no-tag --no-changelog /ruta/a/repo\n", paint(name, ansiYellow))
+		fmt.Fprintf(out, "  %s --no-tag --no-changelog /path/to/repo\n", paint(name, ansiYellow))
 		fmt.Fprintf(out, "  %s --undo .\n", paint(name, ansiYellow))
 		fmt.Fprintf(out, "  %s --undo ../otro-repo\n\n", paint(name, ansiYellow))
 		fmt.Fprintln(out, paint("Flags", ansiBoldCyan)+":")
 		flag.PrintDefaults()
 	}
-	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Muestra la versión sin escribir nada")
-	flag.BoolVar(&cfg.NoTag, "no-tag", false, "No crea el tag git")
-	flag.BoolVar(&cfg.NoChangelog, "no-changelog", false, "No escribe CHANGELOG.md")
-	flag.BoolVar(&cfg.Undo, "undo", false, "Deshace el último release del repo indicado (elimina tag y entrada de CHANGELOG.md)")
-	flag.BoolVar(&cfg.ShowHelp, "h", false, "Muestra esta ayuda")
-	flag.BoolVar(&cfg.ShowHelp, "help", false, "Muestra esta ayuda")
-	flag.BoolVar(&cfg.ShowVersion, "version", false, "Muestra la versión del binario")
+	flag.BoolVar(&cfg.DryRun, "dry-run", false, "Show the computed version without writing anything")
+	flag.BoolVar(&cfg.NoTag, "no-tag", false, "Do not create the git tag")
+	flag.BoolVar(&cfg.NoChangelog, "no-changelog", false, "Do not write CHANGELOG.md")
+	flag.BoolVar(&cfg.Undo, "undo", false, "Undo the last release of the given repo (remove tag and CHANGELOG.md entry)")
+	flag.BoolVar(&cfg.ShowHelp, "h", false, "Show this help")
+	flag.BoolVar(&cfg.ShowHelp, "help", false, "Show this help")
+	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show binary version")
 
 	rawArgs := os.Args[1:]
+	if len(rawArgs) == 0 {
+		cfg.ShowHelp = true
+		return cfg
+	}
+
 	if len(rawArgs) == 1 && rawArgs[0] == "--" {
 		cfg.ShowHelp = true
 		return cfg
@@ -72,24 +77,24 @@ func newConfig() Config {
 	args := flag.Args()
 	if len(args) != 1 {
 		if cfg.Undo && len(args) == 0 {
-			fmt.Fprintln(os.Stderr, "✖  Error: --undo requiere repo_path al final. Ejemplo: gogoversion --undo .")
+			fmt.Fprintln(os.Stderr, "✖  Error: --undo requires repo_path at the end. Example: gogoversion --undo .")
 			flag.Usage()
 			os.Exit(2)
 		}
-		fmt.Fprintln(os.Stderr, "✖  Error: debes indicar exactamente un repo_path al final (usa . para el repo actual)")
+		fmt.Fprintln(os.Stderr, "✖  Error: provide exactly one repo_path at the end (use . for current repo)")
 		flag.Usage()
 		os.Exit(2)
 	}
 
 	repoPath := args[0]
 	if repoPath == "-" || repoPath == "--" {
-		fmt.Fprintln(os.Stderr, "✖  Error: repo_path inválido")
+		fmt.Fprintln(os.Stderr, "✖  Error: invalid repo_path")
 		flag.Usage()
 		os.Exit(2)
 	}
 
 	if rawArgs[len(rawArgs)-1] != repoPath {
-		fmt.Fprintln(os.Stderr, "✖  Error: repo_path debe ir al final, después de todas las opciones")
+		fmt.Fprintln(os.Stderr, "✖  Error: repo_path must be last, after all options")
 		flag.Usage()
 		os.Exit(2)
 	}
@@ -103,6 +108,10 @@ const (
 	ansiReset    = "\033[0m"
 	ansiBold     = "\033[1m"
 	ansiYellow   = "\033[33m"
+	ansiGreen    = "\033[32m"
+	ansiBlue     = "\033[34m"
+	ansiMagenta  = "\033[35m"
+	ansiRed      = "\033[31m"
 	ansiBoldCyan = "\033[1;36m"
 )
 

@@ -12,6 +12,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -148,6 +149,52 @@ func addAndCommitChangelog(repo *git.Repository, message string) error {
 	return err
 }
 
+func addFiles(repo *git.Repository, files []string) error {
+	wt, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if _, err := wt.Add(file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func commitChanges(repo *git.Repository, message string) error {
+	wt, err := repo.Worktree()
+	if err != nil {
+		return err
+	}
+
+	author, err := resolveGitSignature(repo)
+	if err != nil {
+		return err
+	}
+
+	_, err = wt.Commit(message, &git.CommitOptions{
+		Author:    author,
+		Committer: author,
+	})
+	return err
+}
+
+func addAllChangedFiles(repo *git.Repository) (int, error) {
+	files, err := changedFiles(repo)
+	if err != nil {
+		return 0, err
+	}
+	if len(files) == 0 {
+		return 0, nil
+	}
+
+	if err := addFiles(repo, files); err != nil {
+		return 0, err
+	}
+	return len(files), nil
+}
+
 func resolveGitSignature(repo *git.Repository) (*object.Signature, error) {
 	config, err := repo.Config()
 	if err == nil && config.User.Name != "" && config.User.Email != "" {
@@ -164,33 +211,71 @@ func resolveGitSignature(repo *git.Repository) (*object.Signature, error) {
 	}
 
 	if name == "" || email == "" {
-		return nil, fmt.Errorf("no se pudo resolver usuario git (configura user.name y user.email)")
+		return nil, fmt.Errorf("could not resolve git user (configure user.name and user.email)")
 	}
 
 	return &object.Signature{Name: name, Email: email, When: time.Now()}, nil
 }
 
-func ensureCleanWorktree(repo *git.Repository) error {
+func currentBranchName(repo *git.Repository) (string, error) {
+	head, err := repo.Head()
+	if err != nil {
+		return "", err
+	}
+	if head.Name().IsBranch() {
+		return head.Name().Short(), nil
+	}
+	return "detached", nil
+}
+
+func changedFiles(repo *git.Repository) ([]string, error) {
 	wt, err := repo.Worktree()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	status, err := wt.Status()
 	if err != nil {
-		return err
-	}
-
-	if status.IsClean() {
-		return nil
+		return nil, err
 	}
 
 	files := make([]string, 0, len(status))
-	for file := range status {
-		files = append(files, file)
+	for file, fileStatus := range status {
+		if fileStatus.Staging != git.Unmodified || fileStatus.Worktree != git.Unmodified {
+			files = append(files, file)
+		}
 	}
 
-	return fmt.Errorf("working tree con cambios pendientes: %s", strings.Join(files, ", "))
+	slices.Sort(files)
+	return files, nil
+}
+
+func pullCurrentBranch(repo *git.Repository) (bool, error) {
+	head, err := repo.Head()
+	if err != nil {
+		return false, err
+	}
+	if !head.Name().IsBranch() {
+		return false, fmt.Errorf("HEAD is not on a branch; cannot pull automatically")
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		return false, err
+	}
+
+	err = wt.Pull(&git.PullOptions{
+		RemoteName:    "origin",
+		ReferenceName: head.Name(),
+		SingleBranch:  true,
+	})
+	if err == git.NoErrAlreadyUpToDate {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func pushRelease(repo *git.Repository, tag string, includeTag bool) error {
@@ -200,7 +285,7 @@ func pushRelease(repo *git.Repository, tag string, includeTag bool) error {
 	}
 
 	if !head.Name().IsBranch() {
-		return fmt.Errorf("HEAD no está en una rama; no se puede hacer push automático")
+		return fmt.Errorf("HEAD is not on a branch; cannot push automatically")
 	}
 
 	branch := head.Name().Short()

@@ -16,7 +16,9 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/go-git/go-git/v5"
 	"github.com/manifoldco/promptui"
 )
 
@@ -34,73 +36,124 @@ func Run(version string) {
 	}
 
 	if cfg.Undo {
-		exitOnError(undoLastRelease(cfg.RepoPath), "deshaciendo último release")
+		exitOnError(undoLastRelease(cfg.RepoPath), "undoing last release")
 		os.Exit(0)
 	}
 
 	repo, err := openRepository(cfg.RepoPath)
-	exitOnError(err, "abriendo repositorio")
-
-	if !cfg.DryRun {
-		exitOnError(ensureCleanWorktree(repo), "validando estado git")
-	}
+	exitOnError(err, "opening repository")
 
 	currentVersion, err := latestTag(repo)
-	exitOnError(err, "obteniendo último tag")
+	exitOnError(err, "getting latest tag")
+
+	contextInfo, err := collectReleaseContext(repo, cfg, version)
+	exitOnError(err, "collecting release context")
+	printReleaseContext(contextInfo)
 
 	rawCommits, err := commitsSinceTag(repo, currentVersion)
-	exitOnError(err, "leyendo commits")
-
-	if len(rawCommits) == 0 {
-		fmt.Println("⊘  Sin commits desde el último tag.")
-		os.Exit(0)
-	}
+	exitOnError(err, "reading commits")
 
 	commits := parseCommits(rawCommits)
+	if len(commits) == 0 {
+		if len(contextInfo.ChangedFiles) > 0 {
+			commits = syntheticCommitsFromChangedFiles(contextInfo.ChangedFiles)
+			fmt.Printf("ℹ  No commits since latest tag; using %d local changed files for release planning.\n\n", len(contextInfo.ChangedFiles))
+		} else {
+			fmt.Println("⊘  No commits since latest tag and no local changes.")
+			os.Exit(0)
+		}
+	}
+
 	result := buildReleaseResult(currentVersion, commits)
-
-	if !cfg.DryRun && isInteractiveTerminal() {
-		if !confirmDefaultRun(cfg, result) {
-			fmt.Println("ℹ  Operación cancelada.")
-			os.Exit(0)
-		}
-	}
-
-	commitMessage := suggestedCommitMessage(result)
-	if !cfg.DryRun && !cfg.NoChangelog && isInteractiveTerminal() {
-		chosen, ok := askCommitMessage(result)
-		if !ok {
-			fmt.Println("ℹ  Operación cancelada.")
-			os.Exit(0)
-		}
-		commitMessage = chosen
-	}
-
 	printSummary(result)
 
+	commitMessage := suggestedCommitMessage(result)
+	if !cfg.DryRun {
+		chosen, ok := askCommitMessage(result)
+		if !ok {
+			if isInteractiveTerminal() {
+				fmt.Println("ℹ  Operation canceled.")
+				os.Exit(0)
+			}
+			fmt.Println("ℹ  Interactive selector unavailable, using default commit message.")
+		} else {
+			commitMessage = chosen
+		}
+	}
+
 	if cfg.DryRun {
-		fmt.Println("ℹ  --dry-run activo — sin cambios.")
+		fmt.Println("ℹ  --dry-run active — no changes.")
 		os.Exit(0)
 	}
 
+	if isInteractiveTerminal() {
+		if !confirmReleaseExecution(cfg, result, commitMessage) {
+			fmt.Println("ℹ  Operation canceled.")
+			os.Exit(0)
+		}
+	}
+
+	stagedCount := 0
+	createdCommit := false
+	createdTag := false
+
+	runStep(1, 6, "git add")
 	if !cfg.NoChangelog {
-		exitOnError(writeChangelog(cfg.RepoPath, result), "escribiendo CHANGELOG")
-		fmt.Println("✔  CHANGELOG.md actualizado")
-		exitOnError(addAndCommitChangelog(repo, commitMessage), "creando commit de release")
-		fmt.Printf("✔  Commit creado: %s\n", commitMessage)
+		exitOnError(writeChangelog(cfg.RepoPath, result), "writing CHANGELOG")
+		fmt.Println("✔  CHANGELOG.md updated")
+	}
+	stagedCount, err = addAllChangedFiles(repo)
+	exitOnError(err, "staging files")
+	fmt.Printf("✔  Staged %d changed files\n", stagedCount)
+
+	runStep(2, 6, "git commit")
+	if stagedCount > 0 {
+		exitOnError(commitChanges(repo, commitMessage), "creating release commit")
+		fmt.Printf("✔  Commit created: %s\n", commitMessage)
+		createdCommit = true
+	} else {
+		fmt.Println("ℹ  No changed files to commit")
 	}
 
+	runStep(3, 6, "pull from origin")
+	pulled, err := pullCurrentBranch(repo)
+	exitOnError(err, "pulling latest changes from origin")
+	if pulled {
+		fmt.Println("✔  Pulled latest changes from origin")
+	} else {
+		fmt.Println("ℹ  Origin already up to date")
+	}
+
+	runStep(4, 6, "git tag")
 	if !cfg.NoTag {
-		exitOnError(createTag(repo, result.Next), "creando tag")
-		fmt.Printf("✔  Tag %s creado\n", result.Next)
+		exitOnError(createTag(repo, result.Next), "creating tag")
+		fmt.Printf("✔  Tag %s created\n", result.Next)
+		createdTag = true
+	} else {
+		fmt.Println("ℹ  Skipped tag: --no-tag enabled")
 	}
 
-	if !cfg.DryRun {
-		exitOnError(pushRelease(repo, result.Next, !cfg.NoTag), "publicando cambios en remoto")
-		fmt.Println("✔  Push a origin completado")
+	runStep(5, 6, "git push")
+	if createdCommit || createdTag || pulled {
+		exitOnError(pushRelease(repo, result.Next, createdTag), "pushing changes to remote")
+		fmt.Println("✔  Push to origin completed")
+	} else {
+		fmt.Println("ℹ  Nothing to push (no commit/tag created).")
 	}
 
-	fmt.Printf("\n✅ Release %s lista\n", result.Next)
+	runStep(6, 6, "git status")
+	statusFiles, err := changedFiles(repo)
+	exitOnError(err, "reading git status")
+	if len(statusFiles) == 0 {
+		fmt.Println("✔  Working tree is clean")
+	} else {
+		fmt.Printf("ℹ  Working tree has %d changed files:\n", len(statusFiles))
+		for _, file := range statusFiles {
+			fmt.Printf("    • %s\n", file)
+		}
+	}
+
+	fmt.Printf("\n✅ Release %s ready\n", result.Next)
 }
 
 func isInteractiveTerminal() bool {
@@ -111,65 +164,65 @@ func isInteractiveTerminal() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func confirmDefaultRun(cfg Config, result ReleaseResult) bool {
-	suggestedCommit := suggestedCommitMessage(result)
-	fmt.Println("Plan de release automático")
-	fmt.Printf("  • nuevo tag: %s\n", result.Next)
+func confirmReleaseExecution(cfg Config, result ReleaseResult, commitMessage string) bool {
+	fmt.Println("Apply release actions")
+	fmt.Printf("  - target version: %s\n", result.Next)
 	if !cfg.NoChangelog {
-		fmt.Println("  • actualizar CHANGELOG.md")
-		fmt.Println("  • commit sugerido:")
-		fmt.Println("    git add CHANGELOG.md")
-		fmt.Printf("    git commit -m %q\n", suggestedCommit)
+		fmt.Println("  - write CHANGELOG.md: yes")
+	} else {
+		fmt.Println("  - write CHANGELOG.md: no")
 	}
+	fmt.Printf("  - create commit: yes (%s)\n", commitMessage)
 	if !cfg.NoTag {
-		fmt.Println("  • crear el nuevo tag git")
+		fmt.Println("  - create tag: yes")
+	} else {
+		fmt.Println("  - create tag: no")
 	}
-	fmt.Println("  • push a origin (rama actual y tags)")
+	fmt.Println("  - pull from origin: yes")
+	fmt.Println("  - push: yes")
 
-	fmt.Print("¿Continuar? [y/N]: ")
+	fmt.Print("Proceed? [y/N]: ")
 	reader := bufio.NewReader(os.Stdin)
 	answer, err := reader.ReadString('\n')
 	if err != nil {
 		return false
 	}
-
 	answer = strings.ToLower(strings.TrimSpace(answer))
-	return answer == "y" || answer == "yes" || answer == "s" || answer == "si"
+	return answer == "y" || answer == "yes"
 }
 
 func suggestedCommitMessage(result ReleaseResult) string {
+	commitType := defaultReleaseCommitType(result)
+	bang := ""
 	if anyBreaking(result.Commits) {
-		return fmt.Sprintf("feat(release)!: prepara release %s", result.Next)
+		bang = "!"
 	}
-	if anyOfType(result.Commits, "feat") {
-		return fmt.Sprintf("feat(release): prepara release %s", result.Next)
-	}
-	return fmt.Sprintf("fix(release): prepara release %s", result.Next)
+	return fmt.Sprintf("%s(release)%s: %s", commitType, bang, defaultReleaseSubject(result))
 }
 
 func askCommitMessage(result ReleaseResult) (string, bool) {
 	defaultType := defaultReleaseCommitType(result)
 	defaultBang := anyBreaking(result.Commits)
-	defaultSubject := fmt.Sprintf("prepara release %s", result.Next)
+	defaultSubject := defaultReleaseSubject(result)
 	type commitOption struct {
 		Value string
 		Label string
 	}
 
-	fmt.Println("\nConfigura el commit del release:")
+	fmt.Println("\nConfigure release commit:")
 	choices := []commitOption{
-		{Value: "feat", Label: "feat ✨ · nueva funcionalidad (MINOR)"},
+		{Value: "feat", Label: "feat ✨ · new feature (MINOR)"},
 		{Value: "feat!", Label: "feat! ⚠️ · BREAKING CHANGE (MAJOR)"},
-		{Value: "fix", Label: "fix 🩹 · corrección de bug (PATCH)"},
-		{Value: "fix!", Label: "fix! ⚠️ · fix con ruptura (MAJOR)"},
-		{Value: "perf", Label: "perf 🚀 · mejora rendimiento (PATCH)"},
-		{Value: "perf!", Label: "perf! ⚠️ · perf con ruptura (MAJOR)"},
-		{Value: "refactor", Label: "refactor 🧱 · cambio interno (PATCH)"},
-		{Value: "refactor!", Label: "refactor! ⚠️ · refactor con ruptura (MAJOR)"},
-		{Value: "docs", Label: "docs 📝 · documentación (PATCH)"},
-		{Value: "docs!", Label: "docs! ⚠️ · docs con ruptura (MAJOR)"},
-		{Value: "chore", Label: "chore 🔧 · mantenimiento (PATCH)"},
-		{Value: "chore!", Label: "chore! ⚠️ · chore con ruptura (MAJOR)"},
+		{Value: "fix", Label: "fix 🩹 · bug fix (PATCH)"},
+		{Value: "fix!", Label: "fix! ⚠️ · breaking bug fix (MAJOR)"},
+		{Value: "perf", Label: "perf 🚀 · performance improvement (PATCH)"},
+		{Value: "perf!", Label: "perf! ⚠️ · breaking performance change (MAJOR)"},
+		{Value: "refactor", Label: "refactor 🧱 · internal refactor (PATCH)"},
+		{Value: "refactor!", Label: "refactor! ⚠️ · breaking refactor (MAJOR)"},
+		{Value: "docs", Label: "docs 📝 · documentation (PATCH)"},
+		{Value: "docs!", Label: "docs! ⚠️ · breaking docs change (MAJOR)"},
+		{Value: "chore", Label: "chore 🔧 · maintenance (PATCH)"},
+		{Value: "chore!", Label: "chore! ⚠️ · breaking maintenance change (MAJOR)"},
 	}
 
 	defaultChoice := defaultType
@@ -178,7 +231,7 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 	}
 
 	selector := promptui.Select{
-		Label: "Tipo de commit (↑/↓ y Enter)",
+		Label: "Commit type (↑/↓ and Enter)",
 		Items: choices,
 		Templates: &promptui.SelectTemplates{
 			Label:    "{{ .Label | cyan }}",
@@ -210,11 +263,11 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 	}
 
 	prompt := promptui.Prompt{
-		Label:   "Mensaje",
+		Label:   "Message",
 		Default: defaultSubject,
 		Validate: func(input string) error {
 			if strings.TrimSpace(input) == "" {
-				return fmt.Errorf("el mensaje no puede estar vacío")
+				return fmt.Errorf("message cannot be empty")
 			}
 			return nil
 		},
@@ -245,6 +298,166 @@ func defaultReleaseCommitType(result ReleaseResult) string {
 	return "fix"
 }
 
+func defaultReleaseSubject(result ReleaseResult) string {
+	highlights := summarizeCommitSubjects(result.Commits, 3)
+	if len(highlights) == 0 {
+		return fmt.Sprintf("release %s", result.Next)
+	}
+
+	summary := strings.Join(highlights, "; ")
+	if extra := countMeaningfulCommits(result.Commits) - len(highlights); extra > 0 {
+		summary += fmt.Sprintf("; +%d more changes", extra)
+	}
+
+	return fmt.Sprintf("release %s: %s", result.Next, summary)
+}
+
+func summarizeCommitSubjects(commits []Commit, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+
+	seen := map[string]struct{}{}
+	highlights := make([]string, 0, limit)
+	for _, commit := range commits {
+		if shouldIgnoreForSummary(commit) {
+			continue
+		}
+		subject := normalizeCommitSubject(commit.Subject)
+		if subject == "" {
+			continue
+		}
+		if _, ok := seen[subject]; ok {
+			continue
+		}
+		seen[subject] = struct{}{}
+		highlights = append(highlights, subject)
+		if len(highlights) == limit {
+			break
+		}
+	}
+
+	return highlights
+}
+
+func shouldIgnoreForSummary(commit Commit) bool {
+	if commit.Scope == "release" {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(commit.Subject)), "release v") {
+		return true
+	}
+	return false
+}
+
+func normalizeCommitSubject(subject string) string {
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(subject, "local working tree changes:") {
+		return "local working tree changes"
+	}
+
+	const maxLen = 58
+	if len(subject) > maxLen {
+		return strings.TrimSpace(subject[:maxLen-1]) + "…"
+	}
+
+	return subject
+}
+
+func countMeaningfulCommits(commits []Commit) int {
+	count := 0
+	for _, commit := range commits {
+		if normalizeCommitSubject(commit.Subject) != "" {
+			count++
+		}
+	}
+	return count
+}
+
+func syntheticCommitsFromChangedFiles(changedFiles []string) []Commit {
+	subject := fmt.Sprintf("local working tree changes (%d files)", len(changedFiles))
+	if len(changedFiles) > 0 {
+		subject = fmt.Sprintf("local working tree changes: %s", strings.Join(changedFiles, ", "))
+	}
+
+	return []Commit{{
+		Hash:    "local",
+		Type:    "chore",
+		Subject: subject,
+	}}
+}
+
+type releaseContext struct {
+	ToolVersion  string
+	RepoPath     string
+	Branch       string
+	LatestTag    string
+	ChangedFiles []string
+	DryRun       bool
+	NoTag        bool
+	NoChangelog  bool
+}
+
+func collectReleaseContext(repo *git.Repository, cfg Config, version string) (releaseContext, error) {
+	branch, err := currentBranchName(repo)
+	if err != nil {
+		return releaseContext{}, err
+	}
+
+	latest, err := latestTagName(repo)
+	if err != nil {
+		return releaseContext{}, err
+	}
+	if latest == "" {
+		latest = "none"
+	}
+
+	changedFiles, err := changedFiles(repo)
+	if err != nil {
+		return releaseContext{}, err
+	}
+
+	return releaseContext{
+		ToolVersion:  version,
+		RepoPath:     cfg.RepoPath,
+		Branch:       branch,
+		LatestTag:    latest,
+		ChangedFiles: changedFiles,
+		DryRun:       cfg.DryRun,
+		NoTag:        cfg.NoTag,
+		NoChangelog:  cfg.NoChangelog,
+	}, nil
+}
+
+func printReleaseContext(info releaseContext) {
+	fmt.Println(styleLine("✨ markitos powered by gogoversion · ggv", ansiBoldCyan))
+	fmt.Println("Release context")
+	fmt.Printf("  - tool version: %s\n", info.ToolVersion)
+	fmt.Printf("  - repo path: %s\n", info.RepoPath)
+	fmt.Printf("  - branch: %s\n", info.Branch)
+	fmt.Printf("  - latest tag: %s\n", info.LatestTag)
+	if len(info.ChangedFiles) == 0 {
+		fmt.Println("  - changed files: none")
+	} else {
+		fmt.Printf("  - changed files (%d):\n", len(info.ChangedFiles))
+		for _, file := range info.ChangedFiles {
+			fmt.Printf("    • %s\n", file)
+		}
+	}
+	fmt.Printf("  - options: dry-run=%t no-tag=%t no-changelog=%t\n\n", info.DryRun, info.NoTag, info.NoChangelog)
+}
+
+func styleLine(text, code string) string {
+	if !supportsANSI(os.Stdout) {
+		return text
+	}
+	return code + text + ansiReset
+}
+
 func isValidCommitType(commitType string) bool {
 	allowed := []string{"feat", "fix", "perf", "refactor", "docs", "chore"}
 	return slices.Contains(allowed, commitType)
@@ -252,7 +465,12 @@ func isValidCommitType(commitType string) bool {
 
 func exitOnError(err error, context string) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "✖  Error %s: %v\n", context, err)
+		fmt.Fprintf(os.Stderr, "✖  Error while %s: %v\n", context, err)
 		os.Exit(1)
 	}
+}
+
+func runStep(current, total int, name string) {
+	fmt.Printf("\n▶ Step %d/%d: %s\n", current, total, name)
+	time.Sleep(2 * time.Second)
 }

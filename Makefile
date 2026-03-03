@@ -1,14 +1,13 @@
 BINARY  := gogoversion
 LINK    := ggv
 INSTALL := $(shell go env GOPATH)/bin
-MODULE  := github.com/markitos-it/markitos-it-gogoversion
 APP_PKG := ./cmd/app
 REMOTE_BINARY := markitos-it-gogoversion
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install install-latest uninstall clean run tidy
+.PHONY: help build install uninstall clean run-dry tidy test test-v cover run-real run-no-tag run-no-changelog
 
 help: ## Show available targets
 	@echo "Available targets:"
@@ -24,18 +23,23 @@ install: build ## Install binary and symlink
 	cp $(BINARY) $(INSTALL)/$(BINARY)
 	ln -sf $(INSTALL)/$(BINARY) $(INSTALL)/$(LINK)
 
-install-latest: ## go install latest and create ggv symlink
-	go install $(MODULE)/cmd/app@latest
-	ln -sf $(INSTALL)/$(REMOTE_BINARY) $(INSTALL)/$(LINK)
-
-uninstall: ## Remove installed binary and symlink
-	rm -f $(INSTALL)/$(BINARY) $(INSTALL)/$(LINK)
+uninstall: ## Remove installed binaries and symlink
+	rm -f $(INSTALL)/$(BINARY) $(INSTALL)/$(REMOTE_BINARY) $(INSTALL)/$(LINK)
 
 clean: ## Remove local binary
 	rm -f $(BINARY)
 
-run: ## Run with --dry-run
+run-dry: ## Run with --dry-run
 	go run $(APP_PKG) --dry-run .
+
+run-real: ## Run with current directory
+	go run $(APP_PKG) .
+
+run-no-tag: ## Run with --no-tag
+	go run $(APP_PKG) --no-tag .
+
+run-no-changelog: ## Run with --no-changelog
+	go run $(APP_PKG) --no-changelog .
 
 test: ## Run tests
 	go test ./...

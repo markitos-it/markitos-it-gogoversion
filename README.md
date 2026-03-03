@@ -36,7 +36,7 @@ ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
 Or from this repo:
 
 ```bash
-make install-latest # go install cmd/app@latest + ggv symlink
+make install        # installs gogoversion + ggv symlink
 ```
 
 Or clone and build:
@@ -64,7 +64,7 @@ ggv --version        # show binary version
 
 In interactive mode (`ggv .`), the tool asks for the release commit type and message, runs `git add CHANGELOG.md` + `git commit`, creates the tag, and then pushes the current branch and tag to `origin`.
 
-Release mode requires a clean working tree (best practice): commit/stash pending changes before running `ggv .`.
+Release mode allows local pending changes (normal workflow while developing).
 
 ### Conventional Commits — quick reference
 
@@ -109,7 +109,7 @@ ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
 O desde este repo:
 
 ```bash
-make install-latest # go install cmd/app@latest + symlink ggv
+make install        # instala gogoversion + symlink ggv
 ```
 
 O clona y compila:
@@ -137,7 +137,7 @@ ggv --version        # muestra la versión del binario
 
 En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, ejecuta `git add CHANGELOG.md` + `git commit`, crea el tag y después hace push de la rama actual y del tag a `origin`.
 
-El modo release requiere árbol de trabajo limpio (best practice): haz commit o stash de cambios pendientes antes de ejecutar `ggv .`.
+El modo release permite cambios locales pendientes (flujo normal durante desarrollo).
 
 ### Conventional Commits — referencia rápida
 

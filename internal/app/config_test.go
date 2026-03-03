@@ -53,6 +53,17 @@ func TestNewConfigDoubleDashShowsHelp(t *testing.T) {
 	}
 }
 
+func TestNewConfigNoArgsShowsHelp(t *testing.T) {
+	resetFlags()
+	os.Args = []string{"gogoversion"}
+
+	cfg := newConfig()
+
+	if !cfg.ShowHelp {
+		t.Error("expected ShowHelp=true when no args are provided")
+	}
+}
+
 func TestNewConfigDryRun(t *testing.T) {
 	resetFlags()
 	os.Args = []string{"gogoversion", "--dry-run", "."}

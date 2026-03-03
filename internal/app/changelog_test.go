@@ -22,7 +22,7 @@ func TestWriteChangelog(t *testing.T) {
 	result := ReleaseResult{
 		Previous: "v1.0.0",
 		Next:     "v1.1.0",
-		Reason:   "feat detectado → bump MINOR",
+		Reason:   "feature detected → MINOR bump",
 		Commits: []Commit{
 			{Hash: "abc1234", Type: "feat", Scope: "auth", Subject: "add oauth2"},
 			{Hash: "def5678", Type: "fix", Scope: "", Subject: "fix null pointer"},

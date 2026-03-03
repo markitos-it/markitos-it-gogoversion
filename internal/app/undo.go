@@ -13,25 +13,25 @@ func undoLastRelease(repoPath string) error {
 		return err
 	}
 	if tagName == "" {
-		fmt.Println("⊘  No hay tags semver para deshacer.")
+		fmt.Println("⊘  No semver tags found to undo.")
 		return nil
 	}
 
 	if err := deleteTag(repo, tagName); err != nil {
 		return err
 	}
-	fmt.Printf("✔  Tag %s eliminado\n", tagName)
+	fmt.Printf("✔  Tag %s removed\n", tagName)
 
 	removed, err := removeChangelogEntry(repoPath, tagName)
 	if err != nil {
 		return err
 	}
 	if removed {
-		fmt.Printf("✔  Entrada %s eliminada de CHANGELOG.md\n", tagName)
+		fmt.Printf("✔  Entry %s removed from CHANGELOG.md\n", tagName)
 	} else {
-		fmt.Println("ℹ  No se encontró entrada correspondiente en CHANGELOG.md")
+		fmt.Println("ℹ  No matching entry found in CHANGELOG.md")
 	}
 
-	fmt.Printf("\n↩  Undo de %s completado\n", tagName)
+	fmt.Printf("\n↩  Undo of %s completed\n", tagName)
 	return nil
 }

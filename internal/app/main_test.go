@@ -20,10 +20,10 @@ func TestSuggestedCommitMessage(t *testing.T) {
 	t.Run("breaking suggests feat bang", func(t *testing.T) {
 		result := ReleaseResult{
 			Next:    "v2.0.0",
-			Commits: []Commit{{Type: "feat", Breaking: true}},
+			Commits: []Commit{{Type: "feat", Breaking: true, Subject: "remove legacy API"}},
 		}
 		got := suggestedCommitMessage(result)
-		want := "feat(release)!: prepara release v2.0.0"
+		want := "feat(release)!: release v2.0.0: remove legacy API"
 		if got != want {
 			t.Errorf("got %q want %q", got, want)
 		}
@@ -32,10 +32,10 @@ func TestSuggestedCommitMessage(t *testing.T) {
 	t.Run("feat suggests feat", func(t *testing.T) {
 		result := ReleaseResult{
 			Next:    "v1.3.0",
-			Commits: []Commit{{Type: "feat"}},
+			Commits: []Commit{{Type: "feat", Subject: "add oauth login"}},
 		}
 		got := suggestedCommitMessage(result)
-		want := "feat(release): prepara release v1.3.0"
+		want := "feat(release): release v1.3.0: add oauth login"
 		if got != want {
 			t.Errorf("got %q want %q", got, want)
 		}
@@ -44,14 +44,49 @@ func TestSuggestedCommitMessage(t *testing.T) {
 	t.Run("patch suggests fix", func(t *testing.T) {
 		result := ReleaseResult{
 			Next:    "v1.2.4",
-			Commits: []Commit{{Type: "fix"}},
+			Commits: []Commit{{Type: "fix", Subject: "handle nil pointer"}},
 		}
 		got := suggestedCommitMessage(result)
-		want := "fix(release): prepara release v1.2.4"
+		want := "fix(release): release v1.2.4: handle nil pointer"
 		if got != want {
 			t.Errorf("got %q want %q", got, want)
 		}
 	})
+}
+
+func TestDefaultReleaseSubject(t *testing.T) {
+	result := ReleaseResult{
+		Next: "v1.4.0",
+		Commits: []Commit{
+			{Type: "feat", Subject: "add oauth login"},
+			{Type: "feat", Subject: "add oauth login"},
+			{Type: "fix", Subject: "handle nil pointer"},
+			{Type: "docs", Subject: "update README with setup"},
+			{Type: "unknown", Subject: "misc cleanups"},
+		},
+	}
+
+	got := defaultReleaseSubject(result)
+	want := "release v1.4.0: add oauth login; handle nil pointer; update README with setup; +2 more changes"
+	if got != want {
+		t.Errorf("got %q want %q", got, want)
+	}
+}
+
+func TestSyntheticCommitsFromChangedFiles(t *testing.T) {
+	commits := syntheticCommitsFromChangedFiles([]string{"a.go", "b.go"})
+	if len(commits) != 1 {
+		t.Fatalf("got %d commits want 1", len(commits))
+	}
+	if commits[0].Type != "chore" {
+		t.Errorf("got type %q want %q", commits[0].Type, "chore")
+	}
+	if commits[0].Hash != "local" {
+		t.Errorf("got hash %q want %q", commits[0].Hash, "local")
+	}
+	if commits[0].Subject == "" {
+		t.Error("expected non-empty synthetic subject")
+	}
 }
 
 func TestExitOnErrorNil(t *testing.T) {
@@ -95,7 +130,7 @@ func TestExitOnErrorWithError(t *testing.T) {
 	// to verify the format string, without actually calling exitOnError (which would
 	// call os.Exit and terminate the test process).
 	testErr := fmt.Errorf("test error")
-	fmt.Fprintf(os.Stderr, "✖  Error %s: %v\n", "test context", testErr)
+	fmt.Fprintf(os.Stderr, "✖  Error while %s: %v\n", "test context", testErr)
 
 	w.Close()
 	<-done
