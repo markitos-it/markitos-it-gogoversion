@@ -7,7 +7,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build install uninstall clean run-dry tidy test test-v cover run-real run-no-tag run-no-changelog
+.PHONY: help build install uninstall clean clean-cache run-dry tidy test test-v cover run-real run-no-tag run-no-changelog
 
 help: ## Show available targets
 	@echo "Available targets:"
@@ -28,6 +28,9 @@ uninstall: ## Remove installed binaries and symlink
 
 clean: ## Remove local binary
 	rm -f $(BINARY)
+
+clean-cache: ## Remove Go build cache
+	go clean -cache -testcache -modcache
 
 run-dry: ## Run with --dry-run
 	go run $(APP_PKG) --dry-run .

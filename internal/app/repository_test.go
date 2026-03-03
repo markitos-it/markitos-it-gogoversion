@@ -328,6 +328,92 @@ func TestPullCurrentBranchDetachedHead(t *testing.T) {
 	}
 }
 
+func TestPullCurrentBranchAlreadyUpToDate(t *testing.T) {
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+
+	repo, _ := initTestRepo(t)
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+
+	branch, err := currentBranchName(repo)
+	if err != nil {
+		t.Fatalf("currentBranchName: %v", err)
+	}
+	branchSpec := gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
+	if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{branchSpec}}); err != nil {
+		t.Fatalf("initial push: %v", err)
+	}
+
+	pulled, err := pullCurrentBranch(repo)
+	if err != nil {
+		t.Fatalf("pullCurrentBranch: %v", err)
+	}
+	if pulled {
+		t.Fatal("expected pulled=false when branch is already up to date")
+	}
+}
+
+func TestPullCurrentBranchSuccess(t *testing.T) {
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+
+	branch, err := currentBranchName(repo)
+	if err != nil {
+		t.Fatalf("currentBranchName: %v", err)
+	}
+	branchSpec := gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
+	if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{branchSpec}}); err != nil {
+		t.Fatalf("initial push: %v", err)
+	}
+
+	clonerDir := t.TempDir()
+	clonerRepo, err := git.PlainClone(clonerDir, false, &git.CloneOptions{URL: remoteDir})
+	if err != nil {
+		t.Fatalf("PlainClone: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(clonerDir, "remote-change.txt"), []byte("new"), 0644); err != nil {
+		t.Fatalf("WriteFile remote-change.txt: %v", err)
+	}
+	if err := addFiles(clonerRepo, []string{"remote-change.txt"}); err != nil {
+		t.Fatalf("addFiles cloner: %v", err)
+	}
+	if err := commitChanges(clonerRepo, "feat: remote change"); err != nil {
+		t.Fatalf("commitChanges cloner: %v", err)
+	}
+	if err := clonerRepo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{branchSpec}}); err != nil {
+		t.Fatalf("cloner push: %v", err)
+	}
+
+	pulled, err := pullCurrentBranch(repo)
+	if err != nil {
+		t.Fatalf("pullCurrentBranch: %v", err)
+	}
+	if !pulled {
+		t.Fatal("expected pulled=true when remote has new commits")
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, "remote-change.txt")); err != nil {
+		t.Fatalf("expected pulled file to exist locally: %v", err)
+	}
+}
+
 func TestPullCurrentBranchWithoutOrigin(t *testing.T) {
 	repo, _ := initTestRepo(t)
 	_, err := pullCurrentBranch(repo)
