@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/go-git/go-git/v5"
 	"github.com/manifoldco/promptui"
 )
@@ -99,6 +100,14 @@ func Run(version string) {
 		}
 	}
 
+	if adjusted, changed := applyCommitMessageBumpOverride(effectiveResult, currentVersion, cfg.NoTag, commitMessage); changed {
+		effectiveResult = adjusted
+		commitMessage = syncReleaseVersionInCommitMessage(commitMessage, effectiveResult.Next)
+		fmt.Println("ℹ  Commit selection updated release bump.")
+		fmt.Printf("▸  Bump reason:      %s\n", effectiveResult.Reason)
+		fmt.Printf("▸  New version:      %s\n\n", effectiveResult.Next)
+	}
+
 	if cfg.DryRun {
 		fmt.Println("ℹ  --dry-run active — no changes.")
 		exitFunc(0)
@@ -144,8 +153,8 @@ func Run(version string) {
 
 	runStep(4, 6, "git tag")
 	if !cfg.NoTag {
-		exitOnError(createTag(repo, result.Next), "creating tag")
-		fmt.Printf("✔  Tag %s created\n", result.Next)
+		exitOnError(createTag(repo, effectiveResult.Next), "creating tag")
+		fmt.Printf("✔  Tag %s created\n", effectiveResult.Next)
 		createdTag = true
 	} else {
 		fmt.Println("ℹ  Skipped tag: --no-tag enabled")
@@ -153,7 +162,7 @@ func Run(version string) {
 
 	runStep(5, 6, "git push")
 	if createdCommit || createdTag || pulled {
-		exitOnError(pushRelease(repo, result.Next, createdTag), "pushing changes to remote")
+		exitOnError(pushRelease(repo, effectiveResult.Next, createdTag), "pushing changes to remote")
 		fmt.Println("✔  Push to origin completed")
 	} else {
 		fmt.Println("ℹ  Nothing to push (no commit/tag created).")
@@ -279,6 +288,9 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 	if !isValidCommitType(selectedType) {
 		return "", false
 	}
+
+	previewResult := resultForSelectedCommitType(result, selectedType, breaking)
+	defaultSubject = defaultReleaseSubject(previewResult)
 
 	prompt := promptui.Prompt{
 		Label:   "Message",
@@ -533,4 +545,160 @@ func resultForExecutionMode(result ReleaseResult, currentVersion string, noTag b
 	effective.Next = changelogBaseVersion(currentVersion)
 	effective.Reason = "--no-tag enabled → keep current version (no new tag)"
 	return effective
+}
+
+type bumpLevel int
+
+const (
+	bumpPatch bumpLevel = iota + 1
+	bumpMinor
+	bumpMajor
+)
+
+func applyCommitMessageBumpOverride(result ReleaseResult, currentVersion string, noTag bool, commitMessage string) (ReleaseResult, bool) {
+	if noTag {
+		return result, false
+	}
+
+	selectedLevel, ok := bumpLevelFromCommitMessage(commitMessage)
+	if !ok {
+		return result, false
+	}
+
+	computedLevel := bumpLevelFromCommits(result.Commits)
+	if selectedLevel <= computedLevel {
+		return result, false
+	}
+
+	base, err := semver.NewVersion(strings.TrimPrefix(result.Previous, "v"))
+	if err != nil {
+		base, err = semver.NewVersion(strings.TrimPrefix(changelogBaseVersion(currentVersion), "v"))
+		if err != nil {
+			base, _ = semver.NewVersion("0.0.0")
+		}
+	}
+
+	next, reason := bumpVersionForLevel(base, selectedLevel)
+	result.Next = "v" + next
+	result.Reason = reason
+	return result, true
+}
+
+func bumpLevelFromCommitMessage(commitMessage string) (bumpLevel, bool) {
+	typeName, breaking, ok := parseReleaseCommitType(commitMessage)
+	if !ok {
+		return 0, false
+	}
+
+	if breaking {
+		return bumpMajor, true
+	}
+	if typeName == "feat" {
+		return bumpMinor, true
+	}
+	return bumpPatch, true
+}
+
+func bumpLevelFromCommits(commits []Commit) bumpLevel {
+	if anyBreaking(commits) {
+		return bumpMajor
+	}
+	if anyOfType(commits, "feat") {
+		return bumpMinor
+	}
+	return bumpPatch
+}
+
+func bumpVersionForLevel(v *semver.Version, level bumpLevel) (string, string) {
+	major := v.Major()
+	minor := v.Minor()
+	patch := v.Patch()
+
+	switch level {
+	case bumpMajor:
+		return fmt.Sprintf("%d.0.0", major+1), "selected release commit marked BREAKING → MAJOR bump"
+	case bumpMinor:
+		return fmt.Sprintf("%d.%d.0", major, minor+1), "selected release commit type feat → MINOR bump"
+	default:
+		return fmt.Sprintf("%d.%d.%d", major, minor, patch+1), "selected release commit type fix/chore/perf/refactor/docs → PATCH bump"
+	}
+}
+
+func parseReleaseCommitType(commitMessage string) (string, bool, bool) {
+	message := strings.TrimSpace(commitMessage)
+	if message == "" {
+		return "", false, false
+	}
+
+	header := message
+	if parts := strings.SplitN(message, ":", 2); len(parts) > 0 {
+		header = strings.TrimSpace(parts[0])
+	}
+
+	breaking := strings.Contains(header, "!")
+	left := header
+	if idx := strings.Index(header, "("); idx >= 0 {
+		left = strings.TrimSpace(header[:idx])
+	}
+	left = strings.TrimSuffix(left, "!")
+
+	if !isValidCommitType(left) {
+		return "", false, false
+	}
+
+	return left, breaking, true
+}
+
+func syncReleaseVersionInCommitMessage(commitMessage, targetVersion string) string {
+	parts := strings.SplitN(strings.TrimSpace(commitMessage), ":", 2)
+	if len(parts) != 2 {
+		return commitMessage
+	}
+
+	header := strings.TrimSpace(parts[0])
+	subject := strings.TrimSpace(parts[1])
+	lower := strings.ToLower(subject)
+	if !strings.HasPrefix(lower, "release v") {
+		return commitMessage
+	}
+
+	rest := subject[len("release "):]
+	end := 0
+	for end < len(rest) && rest[end] != ' ' && rest[end] != ':' {
+		end++
+	}
+	if end == 0 {
+		return commitMessage
+	}
+
+	normalized := "release " + targetVersion + rest[end:]
+	return fmt.Sprintf("%s: %s", header, normalized)
+}
+
+func resultForSelectedCommitType(result ReleaseResult, selectedType string, breaking bool) ReleaseResult {
+	if strings.Contains(result.Reason, "--no-tag enabled") {
+		return result
+	}
+
+	selectedLevel := bumpPatch
+	if breaking {
+		selectedLevel = bumpMajor
+	} else if selectedType == "feat" {
+		selectedLevel = bumpMinor
+	}
+
+	if selectedLevel <= bumpLevelFromCommits(result.Commits) {
+		return result
+	}
+
+	base, err := semver.NewVersion(strings.TrimPrefix(result.Previous, "v"))
+	if err != nil {
+		return result
+	}
+
+	next, reason := bumpVersionForLevel(base, selectedLevel)
+	updated := result
+	updated.Next = "v" + next
+	updated.Reason = reason
+	return updated
 }

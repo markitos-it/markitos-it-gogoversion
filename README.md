@@ -12,6 +12,8 @@ No Node. No npm. Pure Go.
 
 ## EN — English
 
+Spanish version: [README.es.md](README.es.md)
+
 ### What it does
 
 - Reads the git history since the last tag
@@ -29,8 +31,9 @@ No Node. No npm. Pure Go.
 ### Install
 
 ```bash
-go install github.com/markitos-it/markitos-it-gogoversion/cmd/app@latest
-ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
+go build -o gogoversion ./cmd/app
+cp gogoversion "$(go env GOPATH)/bin/gogoversion"
+ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
 ```
 
 Or from this repo:
@@ -81,77 +84,21 @@ fix(api)!: breaking endpoint change → MAJOR bump
 make uninstall
 ```
 
----
-
-## ES — Español
-
-### Qué hace
-
-- Lee el historial git desde el último tag
-- Parsea [Conventional Commits](https://www.conventionalcommits.org) (`feat`, `fix`, `chore`…)
-- Incrementa la versión siguiendo las reglas de [SemVer](https://semver.org)
-- Escribe `CHANGELOG.md`
-- Crea el nuevo tag git
-
-| Tipo de commit | Incremento |
-|---|---|
-| `BREAKING CHANGE` / `!` | MAJOR `x.0.0` |
-| `feat` | MINOR `0.x.0` |
-| `fix`, `chore`, otros | PATCH `0.0.x` |
-
-### Instalación
+### Make targets
 
 ```bash
-go install github.com/markitos-it/markitos-it-gogoversion/cmd/app@latest
-ln -sf "$(go env GOPATH)/bin/markitos-it-gogoversion" "$(go env GOPATH)/bin/ggv"
-```
-
-O desde este repo:
-
-```bash
-make install        # instala gogoversion + symlink ggv
-```
-
-O clona y compila:
-
-```bash
-git clone git@github.com:markitos-it/markitos-it-gogoversion.git
-cd markitos-it-gogoversion
-make install        # instala gogoversion + symlink ggv
-```
-
-### Uso
-
-```bash
-ggv .                            # release completa en repo actual
-ggv --dry-run .                  # previsualiza sin escribir nada
-ggv --no-tag .                   # solo escribe el changelog
-ggv --no-changelog .             # solo crea el tag
-ggv --undo .                     # deshace el último release (tag + changelog)
-ggv --dry-run /mi/repo           # repositorio en otra ruta
-ggv -h | ggv --help  # muestra ayuda
-ggv --version        # muestra la versión del binario
-```
-
-`repo_path` es obligatorio, debe ir siempre al final y todas las opciones van antes.
-
-En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, ejecuta `git add CHANGELOG.md` + `git commit`, crea el tag y después hace push de la rama actual y del tag a `origin`.
-
-El modo release permite cambios locales pendientes (flujo normal durante desarrollo).
-
-### Conventional Commits — referencia rápida
-
-```
-feat(auth): add oauth2 login        → bump MINOR
-fix: correct null pointer           → bump PATCH
-feat!: remove legacy API            → bump MAJOR
-fix(api)!: breaking endpoint change → bump MAJOR
-```
-
-### Desinstalar
-
-```bash
-make uninstall
+make help
+make build
+make tidy
+make run-dry
+make run-real
+make run-no-tag
+make run-no-changelog
+make test
+make test-v
+make cover
+make clean
+make clean-cache
 ```
 
 ---

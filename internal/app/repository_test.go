@@ -115,6 +115,20 @@ func TestLatestTagWithTags(t *testing.T) {
 	}
 }
 
+func TestLatestTagSkipsInvalidSemverTags(t *testing.T) {
+	repo, _ := initTestRepo(t)
+	addTag(t, repo, "not-semver")
+	addTag(t, repo, "v1.4.0")
+
+	tag, err := latestTag(repo)
+	if err != nil {
+		t.Fatalf("latestTag: %v", err)
+	}
+	if tag != "1.4.0" {
+		t.Errorf("got %q want %q", tag, "1.4.0")
+	}
+}
+
 func TestLatestTagNameWithTags(t *testing.T) {
 	repo, _ := initTestRepo(t)
 	addTag(t, repo, "v2.1.0")
@@ -255,6 +269,49 @@ func TestResolveGitSignatureWithoutIdentity(t *testing.T) {
 	_, err := resolveGitSignature(repo)
 	if err == nil {
 		t.Fatal("expected error when git identity is missing")
+	}
+}
+
+func TestResolveGitSignatureFromRepoConfig(t *testing.T) {
+	repo, _ := initTestRepo(t)
+
+	cfg, err := repo.Config()
+	if err != nil {
+		t.Fatalf("repo.Config: %v", err)
+	}
+	cfg.User.Name = "Config User"
+	cfg.User.Email = "config@example.com"
+	if err := repo.Storer.SetConfig(cfg); err != nil {
+		t.Fatalf("SetConfig: %v", err)
+	}
+
+	sig, err := resolveGitSignature(repo)
+	if err != nil {
+		t.Fatalf("resolveGitSignature: %v", err)
+	}
+	if sig.Name != "Config User" || sig.Email != "config@example.com" {
+		t.Fatalf("got signature %s <%s>", sig.Name, sig.Email)
+	}
+}
+
+func TestCurrentBranchNameDetached(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	hash := commitFile(t, repo, dir, "detached-branch.txt", "detached")
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	if err := wt.Checkout(&git.CheckoutOptions{Hash: hash}); err != nil {
+		t.Fatalf("Checkout detached: %v", err)
+	}
+
+	name, err := currentBranchName(repo)
+	if err != nil {
+		t.Fatalf("currentBranchName: %v", err)
+	}
+	if name != "detached" {
+		t.Fatalf("got %q want %q", name, "detached")
 	}
 }
 
@@ -508,5 +565,98 @@ func TestPushReleaseDetachedHead(t *testing.T) {
 	err = pushRelease(repo, "v0.0.1", false)
 	if err == nil {
 		t.Fatal("expected error on detached HEAD")
+	}
+}
+
+func TestRepositoryErrorsOnBareRepo(t *testing.T) {
+	bdir := t.TempDir()
+	bareRepo, err := git.PlainInit(bdir, true)
+	if err != nil {
+		t.Fatalf("PlainInit bare: %v", err)
+	}
+
+	t.Run("commitsSinceTag head error", func(t *testing.T) {
+		_, err := commitsSinceTag(bareRepo, "0.0.0")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("createTag head error", func(t *testing.T) {
+		if err := createTag(bareRepo, "v1.0.0"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("addAndCommitChangelog worktree error", func(t *testing.T) {
+		if err := addAndCommitChangelog(bareRepo, "msg"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("addFiles worktree error", func(t *testing.T) {
+		if err := addFiles(bareRepo, []string{"a.txt"}); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("commitChanges worktree error", func(t *testing.T) {
+		if err := commitChanges(bareRepo, "msg"); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("addAllChangedFiles changedFiles error", func(t *testing.T) {
+		_, err := addAllChangedFiles(bareRepo)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("changedFiles worktree error", func(t *testing.T) {
+		_, err := changedFiles(bareRepo)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("pushRelease head error", func(t *testing.T) {
+		if err := pushRelease(bareRepo, "v1.0.0", false); err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestPushReleaseTagPushError(t *testing.T) {
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+
+	if err := os.MkdirAll(filepath.Join(remoteDir, "hooks"), 0755); err != nil {
+		t.Fatalf("MkdirAll hooks: %v", err)
+	}
+	hookPath := filepath.Join(remoteDir, "hooks", "update")
+	hook := "#!/usr/bin/env sh\ncase \"$1\" in\n  refs/tags/*) exit 1 ;;\n  *) exit 0 ;;\nesac\n"
+	if err := os.WriteFile(hookPath, []byte(hook), 0755); err != nil {
+		t.Fatalf("WriteFile hook: %v", err)
+	}
+
+	repo, _ := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+	if err := createTag(repo, "v1.2.3"); err != nil {
+		t.Fatalf("createTag: %v", err)
+	}
+
+	err := pushRelease(repo, "v1.2.3", true)
+	if err == nil {
+		t.Fatal("expected error when remote rejects tag updates")
 	}
 }

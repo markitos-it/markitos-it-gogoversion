@@ -553,6 +553,73 @@ func TestResultForExecutionMode(t *testing.T) {
 	})
 }
 
+func TestApplyCommitMessageBumpOverride(t *testing.T) {
+	t.Run("breaking selection upgrades patch to major", func(t *testing.T) {
+		base := buildReleaseResult("0.2.8", []Commit{{Type: "chore", Subject: "docs"}})
+		got, changed := applyCommitMessageBumpOverride(base, "0.2.8", false, "feat(release)!: release v0.2.9: update docs")
+		if !changed {
+			t.Fatal("expected changed=true")
+		}
+		if got.Next != "v1.0.0" {
+			t.Fatalf("got Next=%q want %q", got.Next, "v1.0.0")
+		}
+		if !strings.Contains(got.Reason, "MAJOR") {
+			t.Fatalf("unexpected reason: %q", got.Reason)
+		}
+	})
+
+	t.Run("feat selection upgrades patch to minor", func(t *testing.T) {
+		base := buildReleaseResult("0.2.8", []Commit{{Type: "chore", Subject: "docs"}})
+		got, changed := applyCommitMessageBumpOverride(base, "0.2.8", false, "feat(release): release v0.2.9: update docs")
+		if !changed {
+			t.Fatal("expected changed=true")
+		}
+		if got.Next != "v0.3.0" {
+			t.Fatalf("got Next=%q want %q", got.Next, "v0.3.0")
+		}
+	})
+
+	t.Run("does not downgrade computed minor", func(t *testing.T) {
+		base := buildReleaseResult("1.2.3", []Commit{{Type: "feat", Subject: "new capability"}})
+		got, changed := applyCommitMessageBumpOverride(base, "1.2.3", false, "fix(release): release v1.3.0: polish")
+		if changed {
+			t.Fatal("expected changed=false")
+		}
+		if got.Next != "v1.3.0" {
+			t.Fatalf("got Next=%q want %q", got.Next, "v1.3.0")
+		}
+	})
+
+	t.Run("no-tag mode never overrides", func(t *testing.T) {
+		base := buildReleaseResult("0.2.8", []Commit{{Type: "chore", Subject: "docs"}})
+		got, changed := applyCommitMessageBumpOverride(base, "0.2.8", true, "feat(release)!: release v0.2.9: update docs")
+		if changed {
+			t.Fatal("expected changed=false")
+		}
+		if got.Next != base.Next {
+			t.Fatalf("got Next=%q want %q", got.Next, base.Next)
+		}
+	})
+}
+
+func TestSyncReleaseVersionInCommitMessage(t *testing.T) {
+	t.Run("updates release version prefix", func(t *testing.T) {
+		got := syncReleaseVersionInCommitMessage("feat(release)!: release v0.2.9: update docs", "v1.0.0")
+		want := "feat(release)!: release v1.0.0: update docs"
+		if got != want {
+			t.Fatalf("got %q want %q", got, want)
+		}
+	})
+
+	t.Run("keeps non release subject", func(t *testing.T) {
+		msg := "feat(release)!: breaking release for docs"
+		got := syncReleaseVersionInCommitMessage(msg, "v1.0.0")
+		if got != msg {
+			t.Fatalf("got %q want %q", got, msg)
+		}
+	})
+}
+
 func TestAskCommitMessageSelectorError(t *testing.T) {
 	origSelect := selectCommitOption
 	defer func() { selectCommitOption = origSelect }()
@@ -603,6 +670,48 @@ func TestAskCommitMessagePromptBranches(t *testing.T) {
 		_, ok := askCommitMessage(ReleaseResult{Next: "v1.0.3", Commits: []Commit{{Type: "fix", Subject: "bug"}}})
 		if ok {
 			t.Fatal("expected ok=false for cancel")
+		}
+	})
+}
+
+func TestAskCommitMessageDefaultVersionMatchesSelectedType(t *testing.T) {
+	origSelect := selectCommitOption
+	origPrompt := promptCommitMessage
+	defer func() {
+		selectCommitOption = origSelect
+		promptCommitMessage = origPrompt
+	}()
+
+	base := ReleaseResult{
+		Previous: "v0.2.8",
+		Next:     "v0.2.9",
+		Reason:   "fix/chore detected → PATCH bump",
+		Commits:  []Commit{{Type: "chore", Subject: "local working tree changes: README.md"}},
+	}
+
+	t.Run("feat bang defaults to major release version", func(t *testing.T) {
+		selectCommitOption = func(_ *promptui.Select) (int, error) { return 1, nil }
+		promptCommitMessage = func(_ *promptui.Prompt) (string, error) { return "", nil }
+
+		msg, ok := askCommitMessage(base)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if !strings.Contains(msg, "release v1.0.0") {
+			t.Fatalf("expected major default version in message, got %q", msg)
+		}
+	})
+
+	t.Run("feat defaults to minor release version", func(t *testing.T) {
+		selectCommitOption = func(_ *promptui.Select) (int, error) { return 0, nil }
+		promptCommitMessage = func(_ *promptui.Prompt) (string, error) { return "", nil }
+
+		msg, ok := askCommitMessage(base)
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if !strings.Contains(msg, "release v0.3.0") {
+			t.Fatalf("expected minor default version in message, got %q", msg)
 		}
 	})
 }
@@ -805,6 +914,197 @@ func TestRunInteractiveConfirmationCancel(t *testing.T) {
 	}()
 
 	Run("vtest")
+}
+
+func TestRunInteractiveSelectionOverridesToMajorBeforeConfirm(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v0.2.8")
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	origConfirm := confirmReleaseFn
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+		confirmReleaseFn = origConfirm
+	}()
+
+	os.Args = []string{"gogoversion", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) {
+		return "feat(release)!: release v0.2.9: local breaking release", true
+	}
+	isInteractiveFn = func() bool { return true }
+	confirmReleaseFn = func(_ Config, result ReleaseResult, commitMessage string) bool {
+		if result.Next != "v1.0.0" {
+			t.Fatalf("expected major bump target v1.0.0, got %q", result.Next)
+		}
+		if !strings.Contains(commitMessage, "release v1.0.0") {
+			t.Fatalf("expected commit message synced to v1.0.0, got %q", commitMessage)
+		}
+		return false
+	}
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		rv := recover()
+		ec, ok := rv.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", rv)
+		}
+	}()
+
+	Run("vtest")
+}
+
+func TestRunInteractiveSelectionOverridesToMinorBeforeConfirm(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v0.2.8")
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	origConfirm := confirmReleaseFn
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+		confirmReleaseFn = origConfirm
+	}()
+
+	os.Args = []string{"gogoversion", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) {
+		return "feat(release): release v0.2.9: local feature release", true
+	}
+	isInteractiveFn = func() bool { return true }
+	confirmReleaseFn = func(_ Config, result ReleaseResult, commitMessage string) bool {
+		if result.Next != "v0.3.0" {
+			t.Fatalf("expected minor bump target v0.3.0, got %q", result.Next)
+		}
+		if !strings.Contains(commitMessage, "release v0.3.0") {
+			t.Fatalf("expected commit message synced to v0.3.0, got %q", commitMessage)
+		}
+		return false
+	}
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		rv := recover()
+		ec, ok := rv.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", rv)
+		}
+	}()
+
+	Run("vtest")
+}
+
+func TestRunInteractiveOutputShowsSelectedTargetVersion(t *testing.T) {
+	setupCase := func(t *testing.T, selectionMessage string) string {
+		t.Helper()
+		resetFlags()
+		repo, dir := initTestRepo(t)
+		addTag(t, repo, "v0.2.8")
+		if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+
+		origArgs := os.Args
+		origExit := exitFunc
+		origNewConfig := newConfigFunc
+		origAsk := askCommitMessageFn
+		origInteractive := isInteractiveFn
+		origConfirm := confirmReleaseFn
+		origStdout := os.Stdout
+		origStdin := os.Stdin
+		defer func() {
+			os.Args = origArgs
+			exitFunc = origExit
+			newConfigFunc = origNewConfig
+			askCommitMessageFn = origAsk
+			isInteractiveFn = origInteractive
+			confirmReleaseFn = origConfirm
+			os.Stdout = origStdout
+			os.Stdin = origStdin
+		}()
+
+		os.Args = []string{"gogoversion", dir}
+		newConfigFunc = newConfig
+		askCommitMessageFn = func(ReleaseResult) (string, bool) { return selectionMessage, true }
+		isInteractiveFn = func() bool { return true }
+		confirmReleaseFn = confirmReleaseExecution
+
+		inR, inW, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe stdin: %v", err)
+		}
+		os.Stdin = inR
+		_, _ = inW.WriteString("n\n")
+		inW.Close()
+
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("os.Pipe stdout: %v", err)
+		}
+		os.Stdout = w
+
+		exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+		func() {
+			defer func() {
+				rv := recover()
+				ec, ok := rv.(exitCall)
+				if !ok || ec.code != 0 {
+					t.Fatalf("expected exit(0), got %#v", rv)
+				}
+			}()
+			Run("vtest")
+		}()
+
+		w.Close()
+		buf := make([]byte, 16384)
+		n, _ := r.Read(buf)
+		return string(buf[:n])
+	}
+
+	t.Run("feat bang shows major target version", func(t *testing.T) {
+		out := setupCase(t, "feat(release)!: release v0.2.9: local breaking release")
+		if !strings.Contains(out, "Apply release actions") {
+			t.Fatalf("expected output to contain Apply release actions, got %q", out)
+		}
+		if !strings.Contains(out, "target version: v1.0.0") {
+			t.Fatalf("expected output to contain major target version, got %q", out)
+		}
+	})
+
+	t.Run("feat shows minor target version", func(t *testing.T) {
+		out := setupCase(t, "feat(release): release v0.2.9: local feature release")
+		if !strings.Contains(out, "Apply release actions") {
+			t.Fatalf("expected output to contain Apply release actions, got %q", out)
+		}
+		if !strings.Contains(out, "target version: v0.3.0") {
+			t.Fatalf("expected output to contain minor target version, got %q", out)
+		}
+	})
 }
 
 func TestRunNoStagedChangesAndNoPushPath(t *testing.T) {

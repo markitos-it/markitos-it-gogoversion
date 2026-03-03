@@ -1,3 +1,9 @@
+## v1.0.0 (2026-03-03)
+
+### 🔧 Chores
+
+- local working tree changes: README.es.md, README.md, internal/app/main.go, internal/app/main_test.go, internal/app/repository_test.go ([`local`])
+
 ## v0.2.8 (2026-03-03)
 
 ### 🔧 Chores
