@@ -169,3 +169,34 @@ jobs:
           sudo apt-get install -y shellcheck
           find . -type f -name "*.sh" -not -path "*/vendor/*" -print0 \
             | xargs -0 shellcheck --severity=style --shell=bash --exclude=SC1090 || true
+
+  snyk:
+    name: Snyk Vulnerability Scan
+    runs-on: ubuntu-latest
+    concurrency:
+      group: snyk-${{ github.ref }}
+      cancel-in-progress: true
+    #:[.'.]:>- Permisos mínimos para lectura del repositorio.
+    permissions:
+      contents: read
+    steps:
+      #:[.'.]:>- Checkout del código para análisis Snyk.
+      #:[.'.]:>- Nota: actions/checkout@master se mantiene tal como lo proporciona Snyk.
+      - uses: actions/checkout@master
+
+      #:[.'.]:>- Escaneo de vulnerabilidades con Snyk para Go.
+      #:[.'.]:>- Requiere SNYK_TOKEN almacenado como GitHub Secret (Settings → Secrets).
+      #:[.'.]:>- Complementa govulncheck: Snyk tiene su propia base de datos de CVEs
+      #:[.'.]:>- y detecta además licencias problemáticas y malware en dependencias.
+      #:[.'.]:>- Opciones útiles en snyk test:
+      #:[.'.]:>- - --severity-threshold=high: solo falla en HIGH/CRITICAL.
+      #:[.'.]:>- - --json: salida JSON estructurada.
+      #:[.'.]:>- - --all-projects: escanea todos los módulos del repo.
+      #:[.'.]:>- Nota: || true evita fallo de pipeline; quitar para modo bloqueante.
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/golang@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high

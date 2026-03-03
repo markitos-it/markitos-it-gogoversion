@@ -1,3 +1,9 @@
+## v0.2.3 (2026-03-03)
+
+### 🔧 Chores
+
+- local working tree changes: .github/workflows/appsec.yml, internal/app/changelog.go ([`local`])
+
 ## v0.2.2 (2026-03-03)
 
 ### 🐛 Bug Fixes

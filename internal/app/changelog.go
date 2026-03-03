@@ -11,8 +11,8 @@ package app
 
 import (
 	"fmt"
+	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 )
@@ -37,33 +37,55 @@ func writeChangelog(repoPath string, result ReleaseResult) error {
 
 func writeChangelogForVersion(repoPath string, result ReleaseResult, version string) error {
 	existing := readExistingChangelog(repoPath)
-	//nolint:gosec // G306: 0600 used; path is sanitised by changelogPath via filepath.Clean
-	return os.WriteFile(changelogPath(repoPath), []byte(buildEntry(version, result)+existing), 0600) //nolint:gosec
+	root, err := os.OpenRoot(repoPath)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	f, err := root.OpenFile(changelogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.WriteString(buildEntry(version, result) + existing)
+	return err
 }
 
 func readExistingChangelog(repoPath string) string {
-	data, err := os.ReadFile(changelogPath(repoPath))
+	root, err := os.OpenRoot(repoPath)
+	if err != nil {
+		return ""
+	}
+	defer root.Close()
+	f, err := root.Open(changelogFile)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
 	if err != nil {
 		return ""
 	}
 	return string(data)
 }
 
-func changelogPath(repoPath string) string {
-	// filepath.Clean normalises the path to prevent directory traversal.
-	// repoPath is always the process working directory (os.Getwd), never
-	// user-supplied network input, so G703/G304 is a false positive here.
-	return filepath.Clean(filepath.Join(repoPath, changelogFile))
-}
-
 func removeChangelogEntry(repoPath, version string) (bool, error) {
-	path := changelogPath(repoPath)
-	//nolint:gosec // G304: path is sanitised by changelogPath via filepath.Clean; repoPath is os.Getwd()
-	data, err := os.ReadFile(path) //nolint:gosec
+	root, err := os.OpenRoot(repoPath)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+
+	f, err := root.Open(changelogFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return false, nil
 		}
+		return false, err
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
+	if err != nil {
 		return false, err
 	}
 
@@ -76,20 +98,25 @@ func removeChangelogEntry(repoPath, version string) (bool, error) {
 
 	rest := content[start:]
 	nextRel := strings.Index(rest[len(header):], "\n## ")
+	var updated string
 	if nextRel == -1 {
-		updated := strings.TrimSpace(content[:start])
+		updated = strings.TrimSpace(content[:start])
 		if updated != "" {
 			updated += "\n"
 		}
-		//nolint:gosec // G306: 0600 used; G703: path sanitised in changelogPath
-		return true, os.WriteFile(path, []byte(updated), 0600) //nolint:gosec
+	} else {
+		nextStart := start + len(header) + nextRel + 1
+		updated = content[:start] + content[nextStart:]
+		updated = strings.TrimLeft(updated, "\n")
 	}
 
-	nextStart := start + len(header) + nextRel + 1
-	updated := content[:start] + content[nextStart:]
-	updated = strings.TrimLeft(updated, "\n")
-	//nolint:gosec // G306: 0600 used; G703: path sanitised in changelogPath
-	return true, os.WriteFile(path, []byte(updated), 0600) //nolint:gosec
+	wf, err := root.OpenFile(changelogFile, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	if err != nil {
+		return false, err
+	}
+	defer wf.Close()
+	_, err = wf.WriteString(updated)
+	return true, err
 }
 
 func buildEntry(version string, result ReleaseResult) string {
