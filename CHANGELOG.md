@@ -2,6 +2,7 @@
 
 ### ✨ Features
 
+- (release) release v0.1.0: update GitHub Actions for improved test coverage reportin…; enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; +29 more changes ([`b1871c6`])
 - (release) release v0.1.0: enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; Remove legacy code and tests for the gogoversion tool; +26 more changes ([`a534fe6`])
 - (release) release v0.1.0: release v0.1.0: release v0.1.0: release v0.1.0 · feature…; release v0.1.0: release v0.1.0 · features:12, fixes:7, o…; release v0.1.0 · features:12, fixes:7, other:6; +25 more changes ([`1f59f4f`])
 - (release) release v0.1.0: release v0.1.0: release v0.1.0 · features:12, fixes:7, o…; release v0.1.0 · features:12, fixes:7, other:6; mejora UX interactiva y push automático; +24 more changes ([`9a382b2`])

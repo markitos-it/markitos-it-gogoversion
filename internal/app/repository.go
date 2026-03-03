@@ -303,3 +303,12 @@ func pushRelease(repo *git.Repository, tag string, includeTag bool) error {
 
 	return nil
 }
+
+func deleteRemoteTag(repo *git.Repository, tagName string) error {
+	tagSpec := gitconfig.RefSpec(fmt.Sprintf(":refs/tags/%s", tagName))
+	err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{tagSpec}})
+	if err == nil || err == git.NoErrAlreadyUpToDate {
+		return nil
+	}
+	return err
+}

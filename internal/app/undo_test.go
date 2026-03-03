@@ -14,6 +14,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/go-git/go-git/v5/plumbing"
 )
 
 func TestUndoLastReleaseNoTags(t *testing.T) {
@@ -93,5 +97,41 @@ func TestUndoLastReleaseInvalidPath(t *testing.T) {
 	err := undoLastRelease(dir)
 	if err == nil {
 		t.Fatal("expected error for non-git directory")
+	}
+}
+
+func TestUndoLastReleaseDeletesRemoteTag(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	branch := head.Name().Short()
+	branchSpec := gitconfig.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch)
+	tagSpec := gitconfig.RefSpec("refs/tags/v1.0.0:refs/tags/v1.0.0")
+	if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{branchSpec, tagSpec}}); err != nil {
+		t.Fatalf("Push: %v", err)
+	}
+
+	if err := undoLastRelease(dir); err != nil {
+		t.Fatalf("undoLastRelease: %v", err)
+	}
+
+	remoteRepo, err := git.PlainOpen(remoteDir)
+	if err != nil {
+		t.Fatalf("PlainOpen remote: %v", err)
+	}
+	if _, err := remoteRepo.Reference(plumbing.NewTagReferenceName("v1.0.0"), true); err == nil {
+		t.Fatal("expected remote tag v1.0.0 to be deleted")
 	}
 }

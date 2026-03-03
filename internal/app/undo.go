@@ -21,6 +21,11 @@ func undoLastRelease(repoPath string) error {
 		return err
 	}
 	fmt.Printf("✔  Tag %s removed\n", tagName)
+	if err := deleteRemoteTag(repo, tagName); err == nil {
+		fmt.Printf("✔  Remote tag %s removed from origin\n", tagName)
+	} else {
+		fmt.Printf("ℹ  Remote tag %s was not removed from origin: %v\n", tagName, err)
+	}
 
 	removed, err := removeChangelogEntry(repoPath, tagName)
 	if err != nil {

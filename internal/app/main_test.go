@@ -16,6 +16,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
+	"github.com/manifoldco/promptui"
 )
 
 type exitCall struct {
@@ -547,4 +551,317 @@ func TestResultForExecutionMode(t *testing.T) {
 			t.Fatalf("got Next=%q want %q", got.Next, "v0.1.1")
 		}
 	})
+}
+
+func TestAskCommitMessageSelectorError(t *testing.T) {
+	origSelect := selectCommitOption
+	defer func() { selectCommitOption = origSelect }()
+
+	selectCommitOption = func(_ *promptui.Select) (int, error) {
+		return 0, fmt.Errorf("selector failed")
+	}
+
+	_, ok := askCommitMessage(ReleaseResult{Next: "v1.0.0", Commits: []Commit{{Type: "fix", Subject: "x"}}})
+	if ok {
+		t.Fatal("expected ok=false when selector fails")
+	}
+}
+
+func TestAskCommitMessagePromptBranches(t *testing.T) {
+	origSelect := selectCommitOption
+	origPrompt := promptCommitMessage
+	defer func() {
+		selectCommitOption = origSelect
+		promptCommitMessage = origPrompt
+	}()
+
+	selectCommitOption = func(_ *promptui.Select) (int, error) { return 2, nil }
+
+	t.Run("prompt error", func(t *testing.T) {
+		promptCommitMessage = func(_ *promptui.Prompt) (string, error) {
+			return "", fmt.Errorf("prompt failed")
+		}
+		_, ok := askCommitMessage(ReleaseResult{Next: "v1.0.1", Commits: []Commit{{Type: "fix", Subject: "bug"}}})
+		if ok {
+			t.Fatal("expected ok=false when prompt fails")
+		}
+	})
+
+	t.Run("empty uses default", func(t *testing.T) {
+		promptCommitMessage = func(_ *promptui.Prompt) (string, error) { return "   ", nil }
+		msg, ok := askCommitMessage(ReleaseResult{Next: "v1.0.2", Commits: []Commit{{Type: "fix", Subject: "bug"}}})
+		if !ok {
+			t.Fatal("expected ok=true")
+		}
+		if !strings.Contains(msg, "fix(release): release v1.0.2: bug") {
+			t.Fatalf("unexpected message: %q", msg)
+		}
+	})
+
+	t.Run("cancel keyword", func(t *testing.T) {
+		promptCommitMessage = func(_ *promptui.Prompt) (string, error) { return "cancel", nil }
+		_, ok := askCommitMessage(ReleaseResult{Next: "v1.0.3", Commits: []Commit{{Type: "fix", Subject: "bug"}}})
+		if ok {
+			t.Fatal("expected ok=false for cancel")
+		}
+	})
+}
+
+func TestRunDryRunTraversesCoreFlow(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	_ = repo
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origStdout := os.Stdout
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		os.Stdout = origStdout
+	}()
+
+	os.Args = []string{"gogoversion", "--dry-run", "--no-tag", dir}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stdout = w
+
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	func() {
+		defer func() {
+			rv := recover()
+			ec, ok := rv.(exitCall)
+			if !ok || ec.code != 0 {
+				t.Fatalf("expected exit(0), got %#v", rv)
+			}
+		}()
+		Run("vtest")
+	}()
+
+	w.Close()
+	buf := make([]byte, 8192)
+	n, _ := r.Read(buf)
+	output := string(buf[:n])
+
+	for _, s := range []string{"Release context", "Previous version", "Bump reason", "New version", "--dry-run active"} {
+		if !strings.Contains(output, s) {
+			t.Fatalf("expected output to contain %q, got %q", s, output)
+		}
+	}
+}
+
+func TestRunNoCommitsNoLocalChangesExits(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origNewConfig := newConfigFunc
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		newConfigFunc = origNewConfig
+	}()
+
+	os.Args = []string{"gogoversion", "--no-tag", dir}
+	newConfigFunc = newConfig
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		rv := recover()
+		ec, ok := rv.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", rv)
+		}
+	}()
+
+	Run("vtest")
+}
+
+func TestRunNoCommitsWithChangesFallbackAndNoTagFlow(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+	addTag(t, repo, "v1.0.0")
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit remote: %v", err)
+	}
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+	if err := pushCurrentBranch(t, repo); err != nil {
+		t.Fatalf("pushCurrentBranch: %v", err)
+	}
+
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origArgs := os.Args
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	origSleep := sleepFunc
+	defer func() {
+		os.Args = origArgs
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+		sleepFunc = origSleep
+	}()
+
+	os.Args = []string{"gogoversion", "--no-tag", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) { return "", false }
+	isInteractiveFn = func() bool { return false }
+	sleepFunc = func(time.Duration) {}
+
+	Run("vtest")
+}
+
+func TestRunInteractiveCancelWhenCommitSelectionFails(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+	}()
+
+	os.Args = []string{"gogoversion", "--no-tag", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) { return "", false }
+	isInteractiveFn = func() bool { return true }
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		rv := recover()
+		ec, ok := rv.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", rv)
+		}
+	}()
+
+	Run("vtest")
+}
+
+func TestRunInteractiveConfirmationCancel(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	addTag(t, repo, "v1.0.0")
+	if err := os.WriteFile(dir+"/dirty.txt", []byte("dirty"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	origArgs := os.Args
+	origExit := exitFunc
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	origConfirm := confirmReleaseFn
+	defer func() {
+		os.Args = origArgs
+		exitFunc = origExit
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+		confirmReleaseFn = origConfirm
+	}()
+
+	os.Args = []string{"gogoversion", "--no-tag", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) { return "fix(release): x", true }
+	isInteractiveFn = func() bool { return true }
+	confirmReleaseFn = func(Config, ReleaseResult, string) bool { return false }
+	exitFunc = func(code int) { panic(exitCall{code: code}) }
+
+	defer func() {
+		rv := recover()
+		ec, ok := rv.(exitCall)
+		if !ok || ec.code != 0 {
+			t.Fatalf("expected exit(0), got %#v", rv)
+		}
+	}()
+
+	Run("vtest")
+}
+
+func TestRunNoStagedChangesAndNoPushPath(t *testing.T) {
+	resetFlags()
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+	addTag(t, repo, "v1.0.0")
+	_ = commitFile(t, repo, dir, "post-tag.txt", "fix: after tag")
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit remote: %v", err)
+	}
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+	if err := pushCurrentBranch(t, repo); err != nil {
+		t.Fatalf("pushCurrentBranch: %v", err)
+	}
+
+	origArgs := os.Args
+	origNewConfig := newConfigFunc
+	origAsk := askCommitMessageFn
+	origInteractive := isInteractiveFn
+	origSleep := sleepFunc
+	defer func() {
+		os.Args = origArgs
+		newConfigFunc = origNewConfig
+		askCommitMessageFn = origAsk
+		isInteractiveFn = origInteractive
+		sleepFunc = origSleep
+	}()
+
+	os.Args = []string{"gogoversion", "--no-tag", "--no-changelog", dir}
+	newConfigFunc = newConfig
+	askCommitMessageFn = func(ReleaseResult) (string, bool) { return "", false }
+	isInteractiveFn = func() bool { return false }
+	sleepFunc = func(time.Duration) {}
+
+	Run("vtest")
+}
+
+func pushCurrentBranch(t *testing.T, repo *git.Repository) error {
+	t.Helper()
+	head, err := repo.Head()
+	if err != nil {
+		return err
+	}
+	if !head.Name().IsBranch() {
+		return fmt.Errorf("head is not a branch")
+	}
+	branch := head.Name().Short()
+	refspec := gitconfig.RefSpec(fmt.Sprintf("refs/heads/%s:refs/heads/%s", branch, branch))
+	if err := repo.Push(&git.PushOptions{RemoteName: "origin", RefSpecs: []gitconfig.RefSpec{refspec}}); err != nil && err != git.NoErrAlreadyUpToDate {
+		return err
+	}
+	return nil
 }

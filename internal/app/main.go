@@ -23,13 +23,24 @@ import (
 )
 
 var (
-	exitFunc  = os.Exit
-	usageFunc = func() { flag.Usage() }
-	sleepFunc = time.Sleep
+	exitFunc           = os.Exit
+	usageFunc          = func() { flag.Usage() }
+	sleepFunc          = time.Sleep
+	newConfigFunc      = newConfig
+	askCommitMessageFn = askCommitMessage
+	isInteractiveFn    = isInteractiveTerminal
+	confirmReleaseFn   = confirmReleaseExecution
+	selectCommitOption = func(selector *promptui.Select) (int, error) {
+		idx, _, err := selector.Run()
+		return idx, err
+	}
+	promptCommitMessage = func(prompt *promptui.Prompt) (string, error) {
+		return prompt.Run()
+	}
 )
 
 func Run(version string) {
-	cfg := newConfig()
+	cfg := newConfigFunc()
 
 	if cfg.ShowHelp {
 		usageFunc()
@@ -76,9 +87,9 @@ func Run(version string) {
 
 	commitMessage := suggestedCommitMessage(effectiveResult)
 	if !cfg.DryRun {
-		chosen, ok := askCommitMessage(effectiveResult)
+		chosen, ok := askCommitMessageFn(effectiveResult)
 		if !ok {
-			if isInteractiveTerminal() {
+			if isInteractiveFn() {
 				fmt.Println("ℹ  Operation canceled.")
 				exitFunc(0)
 			}
@@ -93,8 +104,8 @@ func Run(version string) {
 		exitFunc(0)
 	}
 
-	if isInteractiveTerminal() {
-		if !confirmReleaseExecution(cfg, effectiveResult, commitMessage) {
+	if isInteractiveFn() {
+		if !confirmReleaseFn(cfg, effectiveResult, commitMessage) {
 			fmt.Println("ℹ  Operation canceled.")
 			exitFunc(0)
 		}
@@ -256,7 +267,7 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 		}
 	}
 
-	idx, _, err := selector.Run()
+	idx, err := selectCommitOption(&selector)
 	if err != nil {
 		return "", false
 	}
@@ -274,7 +285,7 @@ func askCommitMessage(result ReleaseResult) (string, bool) {
 		Default: defaultSubject,
 	}
 
-	subject, err := prompt.Run()
+	subject, err := promptCommitMessage(&prompt)
 	if err != nil {
 		return "", false
 	}

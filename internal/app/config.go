@@ -18,14 +18,16 @@ import (
 )
 
 type Config struct {
-	RepoPath     string
-	DryRun       bool
-	NoTag        bool
-	NoChangelog  bool
-	Undo         bool
-	ShowHelp     bool
-	ShowVersion  bool
+	RepoPath    string
+	DryRun      bool
+	NoTag       bool
+	NoChangelog bool
+	Undo        bool
+	ShowHelp    bool
+	ShowVersion bool
 }
+
+var configExitFunc = os.Exit
 
 func newConfig() Config {
 	cfg := Config{}
@@ -67,7 +69,7 @@ func newConfig() Config {
 	}
 
 	if err := flag.CommandLine.Parse(rawArgs); err != nil {
-		os.Exit(2)
+		configExitFunc(2)
 	}
 
 	if cfg.ShowHelp || cfg.ShowVersion {
@@ -79,24 +81,24 @@ func newConfig() Config {
 		if cfg.Undo && len(args) == 0 {
 			fmt.Fprintln(os.Stderr, "✖  Error: --undo requires repo_path at the end. Example: gogoversion --undo .")
 			flag.Usage()
-			os.Exit(2)
+			configExitFunc(2)
 		}
 		fmt.Fprintln(os.Stderr, "✖  Error: provide exactly one repo_path at the end (use . for current repo)")
 		flag.Usage()
-		os.Exit(2)
+		configExitFunc(2)
 	}
 
 	repoPath := args[0]
 	if repoPath == "-" || repoPath == "--" {
 		fmt.Fprintln(os.Stderr, "✖  Error: invalid repo_path")
 		flag.Usage()
-		os.Exit(2)
+		configExitFunc(2)
 	}
 
 	if rawArgs[len(rawArgs)-1] != repoPath {
 		fmt.Fprintln(os.Stderr, "✖  Error: repo_path must be last, after all options")
 		flag.Usage()
-		os.Exit(2)
+		configExitFunc(2)
 	}
 
 	cfg.RepoPath = repoPath
@@ -115,8 +117,10 @@ const (
 	ansiBoldCyan = "\033[1;36m"
 )
 
+var supportsANSICheck = supportsANSI
+
 func colorizer(w io.Writer) func(string, string) string {
-	if !supportsANSI(w) {
+	if !supportsANSICheck(w) {
 		return func(s, _ string) string { return s }
 	}
 	return func(s, code string) string {

@@ -10,12 +10,14 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
@@ -253,5 +255,172 @@ func TestResolveGitSignatureWithoutIdentity(t *testing.T) {
 	_, err := resolveGitSignature(repo)
 	if err == nil {
 		t.Fatal("expected error when git identity is missing")
+	}
+}
+
+func TestAddFilesAndCommitChanges(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+	if err := os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0644); err != nil {
+		t.Fatalf("WriteFile a.txt: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0644); err != nil {
+		t.Fatalf("WriteFile b.txt: %v", err)
+	}
+
+	if err := addFiles(repo, []string{"a.txt", "b.txt"}); err != nil {
+		t.Fatalf("addFiles: %v", err)
+	}
+
+	message := "chore: add files"
+	if err := commitChanges(repo, message); err != nil {
+		t.Fatalf("commitChanges: %v", err)
+	}
+
+	head, err := repo.Head()
+	if err != nil {
+		t.Fatalf("Head: %v", err)
+	}
+	commitObj, err := repo.CommitObject(head.Hash())
+	if err != nil {
+		t.Fatalf("CommitObject: %v", err)
+	}
+	if commitObj.Message != message {
+		t.Fatalf("got %q want %q", commitObj.Message, message)
+	}
+}
+
+func TestAddAllChangedFiles(t *testing.T) {
+	repo, dir := initTestRepo(t)
+
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("content"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	count, err := addAllChangedFiles(repo)
+	if err != nil {
+		t.Fatalf("addAllChangedFiles: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("got %d want %d", count, 1)
+	}
+}
+
+func TestPullCurrentBranchDetachedHead(t *testing.T) {
+	repo, dir := initTestRepo(t)
+	hash := commitFile(t, repo, dir, "detached.txt", "detached")
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	if err := wt.Checkout(&git.CheckoutOptions{Hash: hash}); err != nil {
+		t.Fatalf("Checkout: %v", err)
+	}
+
+	_, err = pullCurrentBranch(repo)
+	if err == nil {
+		t.Fatal("expected error on detached HEAD")
+	}
+}
+
+func TestPullCurrentBranchWithoutOrigin(t *testing.T) {
+	repo, _ := initTestRepo(t)
+	_, err := pullCurrentBranch(repo)
+	if err == nil {
+		t.Fatal("expected error when origin is not configured")
+	}
+}
+
+func TestPushReleaseWithAndWithoutTag(t *testing.T) {
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "push.txt"), []byte("push"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	if err := addFiles(repo, []string{"push.txt"}); err != nil {
+		t.Fatalf("addFiles: %v", err)
+	}
+	if err := commitChanges(repo, "chore: push test"); err != nil {
+		t.Fatalf("commitChanges: %v", err)
+	}
+	if err := createTag(repo, "v9.9.9"); err != nil {
+		t.Fatalf("createTag: %v", err)
+	}
+
+	if err := pushRelease(repo, "v9.9.9", false); err != nil {
+		t.Fatalf("pushRelease includeTag=false: %v", err)
+	}
+
+	remoteRepo, err := git.PlainOpen(remoteDir)
+	if err != nil {
+		t.Fatalf("PlainOpen remote: %v", err)
+	}
+
+	branch, err := currentBranchName(repo)
+	if err != nil {
+		t.Fatalf("currentBranchName: %v", err)
+	}
+	if _, err := remoteRepo.Reference(plumbing.NewBranchReferenceName(branch), true); err != nil {
+		t.Fatalf("expected branch to exist on remote: %v", err)
+	}
+
+	if _, err := remoteRepo.Reference(plumbing.NewTagReferenceName("v9.9.9"), true); err == nil {
+		t.Fatal("expected tag not to be pushed when includeTag=false")
+	}
+
+	if err := pushRelease(repo, "v9.9.9", true); err != nil {
+		t.Fatalf("pushRelease includeTag=true: %v", err)
+	}
+	if _, err := remoteRepo.Reference(plumbing.NewTagReferenceName("v9.9.9"), true); err != nil {
+		t.Fatalf("expected tag to be pushed: %v", err)
+	}
+}
+
+func TestPushReleaseDetachedHead(t *testing.T) {
+	remoteDir := t.TempDir()
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatalf("PlainInit bare remote: %v", err)
+	}
+
+	repo, dir := initTestRepo(t)
+	t.Setenv("GIT_AUTHOR_NAME", "Test User")
+	t.Setenv("GIT_AUTHOR_EMAIL", "test@example.com")
+	t.Setenv("GIT_COMMITTER_NAME", "Test User")
+	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
+
+	if _, err := repo.CreateRemote(&gitconfig.RemoteConfig{Name: "origin", URLs: []string{remoteDir}}); err != nil {
+		t.Fatalf("CreateRemote: %v", err)
+	}
+
+	hash := commitFile(t, repo, dir, "detached-push.txt", fmt.Sprintf("detached-%d", time.Now().UnixNano()))
+	wt, err := repo.Worktree()
+	if err != nil {
+		t.Fatalf("Worktree: %v", err)
+	}
+	if err := wt.Checkout(&git.CheckoutOptions{Hash: hash}); err != nil {
+		t.Fatalf("Checkout detached: %v", err)
+	}
+
+	err = pushRelease(repo, "v0.0.1", false)
+	if err == nil {
+		t.Fatal("expected error on detached HEAD")
 	}
 }
