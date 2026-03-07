@@ -1,8 +1,16 @@
 ## v1.0.1 (2026-03-07)
 
+### 🐛 Bug Fixes
+
+- (release) release v1.0.1: update README for end users, add DEVELOPERS.md for contri… ([`fe8b0b5`])
+
 ### 📚 Docs
 
 - update README for end users, add DEVELOPERS.md for contributors ([`11f78e8`])
+
+### 📦 Other
+
+- make test and appsec reusable, release requires both to pass ([`596838f`])
 
 ## v1.0.0 (2026-03-07)
 
