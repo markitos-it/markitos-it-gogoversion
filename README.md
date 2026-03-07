@@ -24,11 +24,13 @@ The binary will be available as `gogoversion` in your `$GOPATH/bin`.
 
 > Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
 
-### Optional alias `ggv`
+### Create aliases `ggv` and `gogov`
 
 ```bash
-ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
+gogoversion install
 ```
+
+This creates `ggv` and `gogov` symlinks pointing to `gogoversion` in the same bin directory.
 
 ---
 
