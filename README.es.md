@@ -2,8 +2,6 @@
 
 > **The Way of the Artisan** — markitos devsecops kulture
 
-Versión en inglés: [README.md](README.md)
-
 Versionado semántico automático desde [Conventional Commits](https://www.conventionalcommits.org).
 Sin Node. Sin npm. Go puro.
 
@@ -12,9 +10,29 @@ Sin Node. Sin npm. Go puro.
 
 ---
 
-## ES — Español
+Versión en inglés: [README.md](README.md) · Para contribuidores: [DEVELOPERS.md](DEVELOPERS.md)
 
-### Qué hace
+---
+
+## Instalación
+
+```bash
+go install github.com/markitos-it/markitos-it-gogoversion/cmd/gogoversion@latest
+```
+
+El binario quedará disponible como `gogoversion` en tu `$GOPATH/bin`.
+
+> Asegúrate de tener `$(go env GOPATH)/bin` en tu `$PATH`.
+
+### Alias opcional `ggv`
+
+```bash
+ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
+```
+
+---
+
+## Qué hace
 
 - Lee el historial git desde el último tag
 - Parsea [Conventional Commits](https://www.conventionalcommits.org) (`feat`, `fix`, `chore`…)
@@ -28,77 +46,41 @@ Sin Node. Sin npm. Go puro.
 | `feat` | MINOR `0.x.0` |
 | `fix`, `chore`, otros | PATCH `0.0.x` |
 
-### Instalación
+---
+
+## Uso
 
 ```bash
-go build -o gogoversion ./cmd/gogoversion
-cp gogoversion "$(go env GOPATH)/bin/gogoversion"
-ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
+gogoversion .                    # release completa en repo actual
+gogoversion --dry-run .          # previsualiza sin escribir nada
+gogoversion --no-tag .           # solo escribe el changelog
+gogoversion --no-changelog .     # solo crea el tag
+gogoversion --undo .             # deshace el último release (tag + changelog)
+gogoversion --dry-run /mi/repo   # repositorio en otra ruta
+gogoversion -h | --help          # muestra ayuda
+gogoversion --version            # muestra la versión del binario
 ```
 
-O desde este repo:
+Con el alias `ggv`:
 
 ```bash
-make install        # instala gogoversion + symlink ggv
-```
-
-O clona y compila:
-
-```bash
-git clone git@github.com:markitos-it/markitos-it-gogoversion.git
-cd markitos-it-gogoversion
-make install        # instala gogoversion + symlink ggv
-```
-
-### Uso
-
-```bash
-ggv .                            # release completa en repo actual
-ggv --dry-run .                  # previsualiza sin escribir nada
-ggv --no-tag .                   # solo escribe el changelog
-ggv --no-changelog .             # solo crea el tag
-ggv --undo .                     # deshace el último release (tag + changelog)
-ggv --dry-run /mi/repo           # repositorio en otra ruta
-ggv -h | ggv --help              # muestra ayuda
-ggv --version                    # muestra la versión del binario
+ggv .
+ggv --dry-run .
 ```
 
 `repo_path` es obligatorio, debe ir siempre al final y todas las opciones van antes.
 
-En modo interactivo (`ggv .`), la herramienta pide el tipo y mensaje del commit de release, ejecuta `git add CHANGELOG.md` + `git commit`, crea el tag y después hace push de la rama actual y del tag a `origin`.
+En modo interactivo (`gogoversion .`), la herramienta pide el tipo y mensaje del commit de release, ejecuta `git add CHANGELOG.md` + `git commit`, crea el tag y después hace push de la rama actual y del tag a `origin`.
 
-El modo release permite cambios locales pendientes (flujo normal durante desarrollo).
+---
 
-### Conventional Commits — referencia rápida
+## Conventional Commits — referencia rápida
 
 ```
 feat(auth): add oauth2 login        → bump MINOR
 fix: correct null pointer           → bump PATCH
 feat!: remove legacy API            → bump MAJOR
 fix(api)!: breaking endpoint change → bump MAJOR
-```
-
-### Desinstalar
-
-```bash
-make uninstall
-```
-
-### Targets de Make
-
-```bash
-make help
-make build
-make tidy
-make run-dry
-make run-real
-make run-no-tag
-make run-no-changelog
-make test
-make test-v
-make cover
-make clean
-make clean-cache
 ```
 
 ---

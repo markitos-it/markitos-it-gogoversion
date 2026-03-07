@@ -10,11 +10,29 @@ No Node. No npm. Pure Go.
 
 ---
 
-## EN — English
+Spanish version: [README.es.md](README.es.md) · For contributors: [DEVELOPERS.md](DEVELOPERS.md)
 
-Spanish version: [README.es.md](README.es.md)
+---
 
-### What it does
+## Install
+
+```bash
+go install github.com/markitos-it/markitos-it-gogoversion/cmd/gogoversion@latest
+```
+
+The binary will be available as `gogoversion` in your `$GOPATH/bin`.
+
+> Make sure `$(go env GOPATH)/bin` is in your `$PATH`.
+
+### Optional alias `ggv`
+
+```bash
+ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
+```
+
+---
+
+## What it does
 
 - Reads the git history since the last tag
 - Parses [Conventional Commits](https://www.conventionalcommits.org) (`feat`, `fix`, `chore`…)
@@ -28,77 +46,41 @@ Spanish version: [README.es.md](README.es.md)
 | `feat` | MINOR `0.x.0` |
 | `fix`, `chore`, others | PATCH `0.0.x` |
 
-### Install
+---
+
+## Usage
 
 ```bash
-go build -o gogoversion ./cmd/gogoversion
-cp gogoversion "$(go env GOPATH)/bin/gogoversion"
-ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
+gogoversion .                    # full release on current repo
+gogoversion --dry-run .          # preview only, no writes
+gogoversion --no-tag .           # changelog only
+gogoversion --no-changelog .     # tag only
+gogoversion --undo .             # undo last release (tag + changelog entry)
+gogoversion --dry-run /my/repo   # different repo path
+gogoversion -h | --help          # show help
+gogoversion --version            # show binary version
 ```
 
-Or from this repo:
+With the `ggv` alias:
 
 ```bash
-make install        # installs gogoversion + ggv symlink
-```
-
-Or clone and build:
-
-```bash
-git clone git@github.com:markitos-it/markitos-it-gogoversion.git
-cd markitos-it-gogoversion
-make install        # installs gogoversion + ggv symlink
-```
-
-### Usage
-
-```bash
-ggv .                            # full release on current repo
-ggv --dry-run .                  # preview only, no writes
-ggv --no-tag .                   # changelog only
-ggv --no-changelog .             # tag only
-ggv --undo .                     # undo last release (tag + changelog entry)
-ggv --dry-run /my/repo           # different repo path
-ggv -h | ggv --help  # show help
-ggv --version        # show binary version
+ggv .
+ggv --dry-run .
 ```
 
 `repo_path` is required, must be the last argument, and all options must go before it.
 
-In interactive mode (`ggv .`), the tool asks for the release commit type and message, runs `git add CHANGELOG.md` + `git commit`, creates the tag, and then pushes the current branch and tag to `origin`.
+In interactive mode (`gogoversion .`), the tool asks for the release commit type and message, runs `git add CHANGELOG.md` + `git commit`, creates the tag, and then pushes the current branch and tag to `origin`.
 
-Release mode allows local pending changes (normal workflow while developing).
+---
 
-### Conventional Commits — quick reference
+## Conventional Commits — quick reference
 
 ```
 feat(auth): add oauth2 login        → MINOR bump
 fix: correct null pointer           → PATCH bump
 feat!: remove legacy API            → MAJOR bump
 fix(api)!: breaking endpoint change → MAJOR bump
-```
-
-### Uninstall
-
-```bash
-make uninstall
-```
-
-### Make targets
-
-```bash
-make help
-make build
-make tidy
-make run-dry
-make run-real
-make run-no-tag
-make run-no-changelog
-make test
-make test-v
-make cover
-make clean
-make clean-cache
 ```
 
 ---
