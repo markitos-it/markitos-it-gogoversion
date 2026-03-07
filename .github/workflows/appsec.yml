@@ -18,6 +18,7 @@ name: appsec-pipeline
 on:
   push:
     branches: [main]
+  workflow_call:
 
 #:[.'.]:>- Permisos mínimos para seguridad:
 #:[.'.]:>- - contents: read permite leer el repositorio.

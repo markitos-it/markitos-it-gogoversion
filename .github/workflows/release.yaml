@@ -6,7 +6,14 @@ on:
       - "v*"
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  appsec:
+    uses: ./.github/workflows/appsec.yml
+
   build:
+    needs: [test, appsec]
     runs-on: ubuntu-latest
     permissions:
       contents: write
