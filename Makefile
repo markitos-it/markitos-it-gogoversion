@@ -26,8 +26,8 @@ install: build ## Install binary and symlink
 uninstall: ## Remove installed binaries and symlink
 	rm -f $(INSTALL)/$(BINARY) $(INSTALL)/$(REMOTE_BINARY) $(INSTALL)/$(LINK)
 
-clean: ## Remove local binary
-	rm -f $(BINARY)
+clean: ## Remove local binary and aliases
+	rm -f $(BINARY) $(LINK) gogov gogoversion-linux gogoversion-linux-amd64 gogoversion-windows-amd64.exe gogoversion-macos-arm64
 
 clean-cache: ## Remove Go build cache
 	go clean -cache -testcache -modcache

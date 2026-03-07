@@ -1,91 +1,11 @@
-## v2.0.1 (2026-03-07)
-
-### 🔧 Chores
-
-- local working tree changes: cmd/gogoversion/main.go, cmd/gogoversion/main_test.go ([`local`])
-
-## v2.0.0 (2026-03-07)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/release.yaml, .github/workflows/test.yml, .gitignore, Makefile, README.es.md, README.md, cmd/app/main.go, cmd/app/main_test.go, internal/app/main_test.go ([`local`])
-
-## v1.0.0 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: README.es.md, README.md, internal/app/main.go, internal/app/main_test.go, internal/app/repository_test.go ([`local`])
-
-## v0.2.8 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/release.yaml ([`local`])
-
-## v0.2.7 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/release.yaml ([`local`])
-
-## v0.2.6 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/release.yaml ([`local`])
-
-## v0.2.5 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/release.yaml ([`local`])
-
-## v0.2.4 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: Makefile, internal/app/repository_test.go ([`local`])
-
-## v0.2.3 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/appsec.yml, internal/app/changelog.go ([`local`])
-
-## v0.2.2 (2026-03-03)
-
-### 🐛 Bug Fixes
-
-- (release) release v0.2.1: update internal/app/undo.go and internal/app/undo_test.go ([`5fc2b7b`])
-
-## v0.2.1 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: internal/app/undo.go, internal/app/undo_test.go ([`local`])
-
-## v0.2.1 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: go.mod, go.sum ([`local`])
-
-## v0.2.0 (2026-03-03)
+## v1.0.0 (2026-03-07)
 
 ### ✨ Features
 
+- (release) release v0.2.5: update .github/workflows/release.yaml ([`eff6a33`])
+- (release) release v0.2.3: update .github/workflows/appsec.yml and internal/app/changelog.go add snyk ([`b0693d9`])
 - (release) release v0.1.0: update .github/workflows/appsec.yml, .github/workflows/ci.yml and 1 more files ([`b478868`])
-
-## v0.1.0 (2026-03-03)
-
-### 🔧 Chores
-
-- local working tree changes: .github/workflows/appsec.yml, .github/workflows/ci.yml, .github/workflows/test.yml ([`local`])
-
-## v0.1.0 (2026-03-03)
-
-### ✨ Features
-
+- (release) release v0.1.0: update GitHub Actions for improved test coverage reportin…; enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; +30 more changes ([`479536c`])
 - (release) release v0.1.0: update GitHub Actions for improved test coverage reportin…; enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; +29 more changes ([`b1871c6`])
 - (release) release v0.1.0: enhance commit message prompt with user-friendly selectio…; implement release management tool with version bumping an…; Remove legacy code and tests for the gogoversion tool; +26 more changes ([`a534fe6`])
 - (release) release v0.1.0: release v0.1.0: release v0.1.0: release v0.1.0 · feature…; release v0.1.0: release v0.1.0 · features:12, fixes:7, o…; release v0.1.0 · features:12, fixes:7, other:6; +25 more changes ([`1f59f4f`])
@@ -107,6 +27,13 @@
 
 ### 🐛 Bug Fixes
 
+- (release) release v2.0.1: update cmd/gogoversion/main.go and cmd/gogoversion/main_test.go ([`d96cb9f`])
+- (release) release v0.2.8: update .github/workflows/release.yaml ([`717da41`])
+- (release) release v0.2.7: update .github/workflows/release.yaml ([`9aebcbf`])
+- (release) release v0.2.2 fix sast ([`90e3bc2`])
+- (release) release v0.2.1: update internal/app/undo.go and internal/app/undo_test.go ([`5fc2b7b`])
+- (release) release v0.2.1: update go.mod and go.sum ([`951875d`])
+- (release) release v0.2.0 appsec fix mod deps ([`d44f2df`])
 - (release) release v0.1.1: local working tree changes ([`09b9f74`])
 - Remove obsolete CI workflow and coverage configuration files ([`ad506db`])
 - Ensure CI workflow triggers on push to main branch ([`cc1a369`])
@@ -116,8 +43,18 @@
 - Correct formatting in confirmation message for release automation ([`e231b42`])
 - (tests) create missing test files and update .gitignore ([`1d4d184`])
 
+### ⚡ Performance
+
+- (release) release v0.2.6: update .github/workflows/release.yaml ([`5635f20`])
+
+### ♻️  Refactor
+
+- (release) release v2.0.0: update .github/workflows/release.yaml, .github/workflows/test.yml and 7 more files ([`d12c6d5`]) ⚠️ BREAKING
+- (release) release v0.2.4: update Makefile and internal/app/repository_test.go ([`ee361e5`])
+
 ### 🔧 Chores
 
+- (release) release v1.0.0: update README.es.md, README.md and 3 more files ([`8484eee`]) ⚠️ BREAKING
 - (ci) update GitHub Actions for improved test coverage reporting and remove octocov configuration ([`6a35de7`])
 
 ### 📦 Other

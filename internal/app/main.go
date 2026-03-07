@@ -41,6 +41,22 @@ var (
 )
 
 func Run(version string) {
+	// Subcommand routing: checked before flag.Parse so that "install" and
+	// "uninstall" are intercepted early. Note: global flags placed before the
+	// subcommand (e.g. --verbose install) are NOT supported by this pattern.
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "install":
+			installAliases()
+			exitFunc(0)
+			return
+		case "uninstall":
+			uninstallAliases()
+			exitFunc(0)
+			return
+		}
+	}
+
 	cfg := newConfigFunc()
 
 	if cfg.ShowHelp {
