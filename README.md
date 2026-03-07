@@ -31,7 +31,7 @@ Spanish version: [README.es.md](README.es.md)
 ### Install
 
 ```bash
-go build -o gogoversion ./cmd/app
+go build -o gogoversion ./cmd/gogoversion
 cp gogoversion "$(go env GOPATH)/bin/gogoversion"
 ln -sf "$(go env GOPATH)/bin/gogoversion" "$(go env GOPATH)/bin/ggv"
 ```

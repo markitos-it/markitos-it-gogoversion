@@ -1,4 +1,4 @@
-name: Release
+name: release-pipeline
 
 on:
   push:
@@ -22,9 +22,9 @@ jobs:
 
       - name: Build multi-platform
         run: |
-          GOOS=linux GOARCH=amd64 go build -o gogoversion-linux-amd64 ./cmd/app
-          GOOS=windows GOARCH=amd64 go build -o gogoversion-windows-amd64.exe ./cmd/app
-          GOOS=darwin GOARCH=arm64 go build -o gogoversion-macos-arm64 ./cmd/app
+          GOOS=linux GOARCH=amd64 go build -o gogoversion-linux-amd64 ./cmd/gogoversion
+          GOOS=windows GOARCH=amd64 go build -o gogoversion-windows-amd64.exe ./cmd/gogoversion
+          GOOS=darwin GOARCH=arm64 go build -o gogoversion-macos-arm64 ./cmd/gogoversion
 
       - name: Crear Release
         uses: softprops/action-gh-release@v2

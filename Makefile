@@ -1,7 +1,7 @@
 BINARY  := gogoversion
 LINK    := ggv
 INSTALL := $(shell go env GOPATH)/bin
-APP_PKG := ./cmd/app
+APP_PKG := ./cmd/gogoversion
 REMOTE_BINARY := markitos-it-gogoversion
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 

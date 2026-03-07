@@ -105,7 +105,7 @@ func TestDefaultReleaseSubjectWithLocalChanges(t *testing.T) {
 			Next: "v0.1.1",
 			Commits: []Commit{{
 				Type:    "chore",
-				Subject: "local working tree changes: .github/workflows/ci.yml, .octocov.yml, cmd/app/main.go",
+				Subject: "local working tree changes: .github/workflows/ci.yml, .octocov.yml, cmd/gogoversion/main.go",
 			}},
 		}
 

@@ -2,3 +2,7 @@ gogoversion
 markitos-it-gogoversion
 coverage.out
 /app
+/markitos-it-gogoversion
+/cmd/gogoversion
+/gogoversion
+/ggv

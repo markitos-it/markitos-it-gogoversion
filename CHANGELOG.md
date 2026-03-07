@@ -1,3 +1,9 @@
+## v2.0.0 (2026-03-07)
+
+### 🔧 Chores
+
+- local working tree changes: .github/workflows/release.yaml, .github/workflows/test.yml, .gitignore, Makefile, README.es.md, README.md, cmd/app/main.go, cmd/app/main_test.go, internal/app/main_test.go ([`local`])
+
 ## v1.0.0 (2026-03-03)
 
 ### 🔧 Chores
