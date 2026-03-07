@@ -1,3 +1,9 @@
+## v1.0.1 (2026-03-07)
+
+### 📚 Docs
+
+- update README for end users, add DEVELOPERS.md for contributors ([`11f78e8`])
+
 ## v1.0.0 (2026-03-07)
 
 ### ✨ Features
